@@ -249,7 +249,7 @@ qs <- foreach(file = seacardat_forit) %dofuture% {
     
   } else if(str_detect(file, "Oyster")){
     
-    dat[ParameterName != "Density" & ParameterName != "Reef Height" & ParameterName != "Percent Live", ParameterName := paste0(ParameterName, "_", QuadSize_m2)]
+    dat[ParameterName != "Density" & ParameterName != "Reef Height" & ParameterName != "Percent Live", ParameterName := paste0(ParameterName, "/", QuadSize_m2, "m2")]
     
     for(par in unique(dat$ParameterName)){
       if(par %in% parstoskip) next
@@ -318,6 +318,8 @@ nums <- colnames(qs2[, .SD, .SDcols = is.numeric])
 for(n in nums){
   qs2[, (n) := plyr::round_any(eval(as.name(n)), 0.001)]
 }
+qs2[, parameter := as.character(parameter)]
+setorder(qs2, habitat, parameter)
 
 # fwrite(qs2, here::here(paste0("IndicatorQuantiles_", Sys.Date(), ".csv")))
 hs <- openxlsx::createStyle(textDecoration = "BOLD")
