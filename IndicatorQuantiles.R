@@ -5,7 +5,7 @@ library(doFuture)
 seacardat <- list.files(here::here("SEACARdata"), full.names = TRUE)
 
 #Set which parameters to skip (e.g., those with DEAR thresholds and/or expected values)
-seacardat <- subset(seacardat, str_detect(seacardat, "NH4|NO2|PO4|Kjeldahl|Oxygen|pH|Secchi|Salinity|Conductivity|Temperature|Blanquet|Percent", negate = TRUE))
+seacardat <- subset(seacardat, str_detect(seacardat, "Oxygen|pH|Secchi|Salinity|Conductivity|Temperature|Blanquet|Percent", negate = TRUE))
 parstoskip <- c("[PercentCover-SpeciesComposition_%]", 
                 "[Total/CanopyPercentCover-SpeciesComposition_%]", 
                 "Percent Live",
@@ -18,7 +18,7 @@ seacardat_forit <- c(subset(seacardat, str_detect(seacardat, "Combined_WQ_WC_NUT
 
 
 #Set quantile thresholds for flagging "questionable" values
-quant_low <- 0.005
+quant_low <- 0.001
 quant_high <- 0.999
 num_sds <- 3
 
@@ -48,7 +48,6 @@ qs <- data.table(habitat = character(),
 
 qs <- foreach(file = seacardat_forit) %dofuture% {
   file_short <- str_sub(file, 61, -1)
-  dat <- fread(file)
   qs_dat <- data.table(habitat = character(), 
                        parameter = character(),
                        median = numeric(),
@@ -108,6 +107,9 @@ qs <- foreach(file = seacardat_forit) %dofuture% {
     }
     
   } else if(str_detect(file, "Combined_WQ_WC_NUT_")){
+    
+    dat <- fread(file, sep = "|")
+    
     for(par in unique(dat$ParameterName)){
       if(par %in% parstoskip) next
       
@@ -137,6 +139,9 @@ qs <- foreach(file = seacardat_forit) %dofuture% {
     }
     
   } else if(str_detect(file, "All Parameters but Hecatres-2021-Jul-26.csv")){
+    
+    dat <- fread(file)
+    
     dat <- melt(dat, 
                 measure.vars = c("[PercentCover-SpeciesComposition_%]", "[StemDensity_#/m2]", "[Total/CanopyPercentCover-SpeciesComposition_%]", "[BasalArea_m2/ha]"),
                 variable.name = "ParameterName",
@@ -216,8 +221,12 @@ qs <- foreach(file = seacardat_forit) %dofuture% {
     
   } else if(str_detect(file, "Count-")){
     
+    dat <- fread(file)
+    
     dat[EffortCorrection_100m2 > 0, ResultValue := ResultValue/EffortCorrection_100m2]
-    dat[, ParameterName := "Count/100m2 (effort corrected)"]
+    dat[, `:=` (ParameterName = "Count/100m2 (effort corrected)")]
+    dat[SpeciesGroup1 == "", SpeciesGroup1 := NA]
+    dat[CommonIdentifier == "Ophiothrix angulata", SpeciesGroup1 := "Grazers and reef dependent species"]
     
     for(par in unique(dat$ParameterName)){
       if(par %in% parstoskip) next
@@ -245,9 +254,35 @@ qs <- foreach(file = seacardat_forit) %dofuture% {
                       filename = file_short)]
       
       qs_dat <- rbind(qs_dat, dat_par)
+      
+      dat_par2 <- dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & SpeciesGroup1 == "Grazers and reef dependent species", .(parameter = paste0(unique(ParameterName), " - Grazers and reef dependent species"),
+                                                                                                                                         median = median(ResultValue),
+                                                                                                                                         iqr = IQR(ResultValue),
+                                                                                                                                         qval_low = quant_low,
+                                                                                                                                         qval_high = quant_high,
+                                                                                                                                         q_low = quantile(ResultValue, probs = quant_low),
+                                                                                                                                         q_high = quantile(ResultValue, probs = quant_high),
+                                                                                                                                         mean = mean(ResultValue),
+                                                                                                                                         sd = sd(ResultValue),
+                                                                                                                                         num_sds = num_sds,
+                                                                                                                                         sdn_low = mean(ResultValue) - (num_sds * sd(ResultValue)),
+                                                                                                                                         sdn_high = mean(ResultValue) + (num_sds * sd(ResultValue)),
+                                                                                                                                         n_tot = length(ResultValue),
+                                                                                                                                         n_q_low = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & ResultValue < dat[ParameterName == par & !is.na(ResultValue) & MADup == 1, quantile(ResultValue, probs = quant_low)], ]),
+                                                                                                                                         n_q_high = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & ResultValue > dat[ParameterName == par & !is.na(ResultValue) & MADup == 1, quantile(ResultValue, probs = quant_high)], ]),
+                                                                                                                                         n_sdn_low = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & ResultValue < dat[ParameterName == par & !is.na(ResultValue) & MADup == 1, mean(ResultValue) - (num_sds * sd(ResultValue))], ]),
+                                                                                                                                         n_sdn_high = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & ResultValue > dat[ParameterName == par & !is.na(ResultValue) & MADup == 1, mean(ResultValue) + (num_sds * sd(ResultValue))], ]))]
+      
+      dat_par2[, `:=` (habitat = "Coral Reef",
+                       pid = Sys.getpid(),
+                       filename = file_short)]
+      
+      qs_dat <- rbind(qs_dat, dat_par2)
     }
     
   } else if(str_detect(file, "Oyster")){
+    
+    dat <- fread(file)
     
     dat[ParameterName != "Density" & ParameterName != "Reef Height" & ParameterName != "Percent Live", ParameterName := paste0(ParameterName, "/", QuadSize_m2, "m2")]
     
@@ -280,6 +315,9 @@ qs <- foreach(file = seacardat_forit) %dofuture% {
     }
     
   } else {
+    
+    dat <- fread(file)
+    
     for(par in unique(dat$ParameterName)){
       if(par %in% parstoskip) next
       
