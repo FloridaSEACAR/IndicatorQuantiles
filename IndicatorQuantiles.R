@@ -41,6 +41,8 @@ quant_low <- 0.001
 quant_high <- 0.999
 num_sds <- 3
 
+#What are the strings that need to be interpreted as NA values?
+nas <- c("NULL")
 
 plan(multisession, workers = 10)
 
@@ -66,7 +68,30 @@ qs <- data.table(habitat = character(),
                  pid = integer(),
                  filename = character())
 
-qs <- foreach(file = seacardat_forit) %dofuture% {
+qs2 <- data.table(habitat = character(),
+                 tn = character(),
+                 parameter = character(),
+                 median = numeric(),
+                 iqr = numeric(),
+                 qval_low = numeric(),
+                 qval_high = numeric(),
+                 q_low = numeric(),
+                 q_high = numeric(),
+                 mean = numeric(),
+                 sd = numeric(),
+                 num_sds = integer(),
+                 sdn_low = numeric(),
+                 sdn_high = numeric(),
+                 n_tot = integer(),
+                 n_q_low = integer(),
+                 n_q_high = integer(),
+                 n_sdn_low = integer(),
+                 n_sdn_high = integer(),
+                 pid = integer(),
+                 filename = character())
+
+# qs <- foreach(file = seacardat_forit) %dofuture% {
+for(file in seacardat_forit){
   file_short <- str_sub(file, 61, -1)
   qs_dat <- data.table(habitat = character(),
                        tn = character(), 
@@ -90,47 +115,49 @@ qs <- foreach(file = seacardat_forit) %dofuture% {
                        pid = integer(),
                        filename = character())
   
-  if(str_detect(file, "Combined_WQ_WC_NUT_cont_")){
+  #skip all continuous WQ datasets because they all have low/high thresholds already
+  if(str_detect(file, "Combined_WQ_WC_NUT_cont_")) next #{
     
-   cont_dat <- lapply(subset(seacardat, str_detect(seacardat, "Combined_WQ_WC_NUT_cont_")), function(x){
-      assign(paste0("cont_", which(str_detect(subset(seacardat, str_detect(seacardat, "Combined_WQ_WC_NUT_cont_")), x))),
-             fread(x, sep = "|"))
-    })
+  #  cont_dat <- lapply(subset(seacardat, str_detect(seacardat, "Combined_WQ_WC_NUT_cont_")), function(x){
+  #     assign(paste0("cont_", which(str_detect(subset(seacardat, str_detect(seacardat, "Combined_WQ_WC_NUT_cont_")), x))),
+  #            fread(x, sep = "|", na.strings = nas))
+  #   })
+  # 
+  #   cont_dat <- rbindlist(cont_dat)
+  # 
+  #   for(par in unique(cont_dat$ParameterName)){
+  #     if(par %in% parstoskip) next
+  # 
+  #     cont_dat_par <- cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, .(parameter = unique(ParameterName),
+  #                                                                                                        tn = NA,
+  #                                                                                                        median = median(ResultValue),
+  #                                                                                                        iqr = IQR(ResultValue),
+  #                                                                                                        qval_low = quant_low,
+  #                                                                                                        qval_high = quant_high,
+  #                                                                                                        q_low = quantile(ResultValue, probs = quant_low),
+  #                                                                                                        q_high = quantile(ResultValue, probs = quant_high),
+  #                                                                                                        mean = mean(ResultValue),
+  #                                                                                                        sd = sd(ResultValue),
+  #                                                                                                        num_sds = num_sds,
+  #                                                                                                        sdn_low = mean(ResultValue) - (num_sds * sd(ResultValue)),
+  #                                                                                                        sdn_high = mean(ResultValue) + (num_sds * sd(ResultValue)),
+  #                                                                                                        n_tot = length(ResultValue),
+  #                                                                                                        n_q_low = nrow(cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue < cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, quantile(ResultValue, probs = quant_low)], ]),
+  #                                                                                                        n_q_high = nrow(cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue > cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, quantile(ResultValue, probs = quant_high)], ]),
+  #                                                                                                        n_sdn_low = nrow(cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue < cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, mean(ResultValue) - (num_sds * sd(ResultValue))], ]),
+  #                                                                                                        n_sdn_high = nrow(cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue > cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, mean(ResultValue) + (num_sds * sd(ResultValue))], ]))]
+  # 
+  #     cont_dat_par[, `:=` (habitat = "Water Column (Continuous)",
+  #                          pid = Sys.getpid(),
+  #                          filename = paste0("example: ", file_short))]
+  # 
+  #     qs_dat <- rbind(qs_dat, cont_dat_par)
+  #   }
+  #   
+  # } else 
+  if(str_detect(file, "Combined_WQ_WC_NUT_")){
     
-    cont_dat <- rbindlist(cont_dat)
-    
-    for(par in unique(cont_dat$ParameterName)){
-      if(par %in% parstoskip) next
-      
-      cont_dat_par <- cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, .(parameter = unique(ParameterName),
-                                                                                                         tn = NA,
-                                                                                                         median = median(ResultValue),
-                                                                                                         iqr = IQR(ResultValue),
-                                                                                                         qval_low = quant_low,
-                                                                                                         qval_high = quant_high,
-                                                                                                         q_low = quantile(ResultValue, probs = quant_low),
-                                                                                                         q_high = quantile(ResultValue, probs = quant_high),
-                                                                                                         mean = mean(ResultValue),
-                                                                                                         sd = sd(ResultValue),
-                                                                                                         num_sds = num_sds,
-                                                                                                         sdn_low = mean(ResultValue) - (num_sds * sd(ResultValue)),
-                                                                                                         sdn_high = mean(ResultValue) + (num_sds * sd(ResultValue)),
-                                                                                                         n_tot = length(ResultValue),
-                                                                                                         n_q_low = nrow(cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue < cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, quantile(ResultValue, probs = quant_low)], ]),
-                                                                                                         n_q_high = nrow(cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue > cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, quantile(ResultValue, probs = quant_high)], ]),
-                                                                                                         n_sdn_low = nrow(cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue < cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, mean(ResultValue) - (num_sds * sd(ResultValue))], ]),
-                                                                                                         n_sdn_high = nrow(cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue > cont_dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, mean(ResultValue) + (num_sds * sd(ResultValue))], ]))]
-      
-      cont_dat_par[, `:=` (habitat = "Water Column (Continuous)",
-                           pid = Sys.getpid(),
-                           filename = paste0("example: ", file_short))]
-      
-      qs_dat <- rbind(qs_dat, cont_dat_par)
-    }
-    
-  } else if(str_detect(file, "Combined_WQ_WC_NUT_")){
-    
-    dat <- fread(file, sep = "|")
+    dat <- fread(file, sep = "|", na.strings = nas)
     
     for(par in unique(dat$ParameterName)){
       if(par %in% parstoskip) next
@@ -206,15 +233,20 @@ qs <- foreach(file = seacardat_forit) %dofuture% {
       qs_dat <- rbind(qs_dat, dat_par)
     }
     
-  } else if(str_detect(file, "All Parameters but Hecatres-2021-Jul-26.csv")){
+    qs <- rbind(qs, qs_dat)
+    print(paste0(file_short, " done"))
     
-    dat <- fread(file)
     
-    dat <- melt(dat, 
-                measure.vars = c("[PercentCover-SpeciesComposition_%]", "[StemDensity_#/m2]", "[Total/CanopyPercentCover-SpeciesComposition_%]", "[BasalArea_m2/ha]"),
-                variable.name = "ParameterName",
-                value.name = "ResultValue")
-    dat[, ResultValue := as.numeric(ResultValue)]
+  } else if(str_detect(file, "All_CW_Parameters")){
+    
+    dat <- fread(file, sep = "|", na.string = nas)
+    
+    # #Only needed for old-style wide-format exports
+    # dat <- melt(dat, 
+    #             measure.vars = c("[PercentCover-SpeciesComposition_%]", "[StemDensity_#/m2]", "[Total/CanopyPercentCover-SpeciesComposition_%]", "[BasalArea_m2/ha]"),
+    #             variable.name = "ParameterName",
+    #             value.name = "ResultValue")
+    # dat[, ResultValue := as.numeric(ResultValue)]
     
     for(par in unique(dat$ParameterName)){
       if(par %in% parstoskip) next
@@ -244,21 +276,29 @@ qs <- foreach(file = seacardat_forit) %dofuture% {
       
       qs_dat <- rbind(qs_dat, dat_par)
     }
+    
+    qs <- rbind(qs, qs_dat)
+    print(paste0(file_short, " done"))
+    
 
-  } else if(str_detect(file, "DRY TORT|FLA KEYS|SE FL")){
+  } else if(str_detect(file, "All_CORAL_Parameters")){
     
-    coral_dat <- lapply(subset(seacardat, str_detect(seacardat, "Species Richness  - ")), function(x){
-      assign(paste0("coral_", which(str_detect(subset(seacardat, str_detect(seacardat, "Species Richness  - ")), x))),
-             fread(x))
-    })
+    # #Only needed when coral exports were speparated by region
+    # coral_dat <- lapply(subset(seacardat, str_detect(seacardat, "Species Richness  - ")), function(x){
+    #   assign(paste0("coral_", which(str_detect(subset(seacardat, str_detect(seacardat, "Species Richness  - ")), x))),
+    #          fread(x))
+    # })
+    #
+    # coral_dat <- rbindlist(coral_dat)
     
-    coral_dat <- rbindlist(coral_dat)
+    dat <- fread(file, sep = "|", na.strings = nas)
     
-    dat <- melt(coral_dat, 
-                measure.vars = c("[PercentCover-SpeciesComposition_%]", "[%LiveTissue_%]", "Height_cm", "Width_cm", "Diameter_cm"),
-                variable.name = "ParameterName",
-                value.name = "ResultValue")
-    dat[, ResultValue := as.numeric(ResultValue)]
+    # #Only needed for old-style wide formatted exports
+    # dat <- melt(coral_dat, 
+    #             measure.vars = c("[PercentCover-SpeciesComposition_%]", "[%LiveTissue_%]", "Height_cm", "Width_cm", "Diameter_cm"),
+    #             variable.name = "ParameterName",
+    #             value.name = "ResultValue")
+    # dat[, ResultValue := as.numeric(ResultValue)]
     
     for(par in unique(dat$ParameterName)){
       if(par %in% parstoskip) next
@@ -289,9 +329,13 @@ qs <- foreach(file = seacardat_forit) %dofuture% {
       qs_dat <- rbind(qs_dat, dat_par)
     }
     
-  } else if(str_detect(file, "Count-")){
+    qs <- rbind(qs, qs_dat)
+    print(paste0(file_short, " done"))
     
-    dat <- fread(file)
+    
+  } else if(str_detect(file, "All_NEKTON_Parameters")){
+    
+    dat <- fread(file, sep = "|", na.strings = nas)
     
     dat[EffortCorrection_100m2 > 0, ResultValue := ResultValue/EffortCorrection_100m2]
     dat[, `:=` (ParameterName = "Count/100m2 (effort corrected)")]
@@ -352,9 +396,13 @@ qs <- foreach(file = seacardat_forit) %dofuture% {
       qs_dat <- rbind(qs_dat, dat_par2)
     }
     
-  } else if(str_detect(file, "Oyster")){
+    qs <- rbind(qs, qs_dat)
+    print(paste0(file_short, " done"))
     
-    dat <- fread(file)
+    
+  } else if(str_detect(file, "All_Oyster_Parameters")){
+    
+    dat <- fread(file, sep = "|", na.strings = nas)
     
     dat[ParameterName != "Density" & ParameterName != "Reef Height" & ParameterName != "Percent Live", ParameterName := paste0(ParameterName, "/", QuadSize_m2, "m2")]
     
@@ -387,9 +435,12 @@ qs <- foreach(file = seacardat_forit) %dofuture% {
       qs_dat <- rbind(qs_dat, dat_par)
     }
     
+    qs <- rbind(qs, qs_dat)
+    print(paste0(file_short, " done"))
+    
   } else {
     
-    dat <- fread(file)
+    dat <- fread(file, sep = "|", na.strings = nas)
     
     for(par in unique(dat$ParameterName)){
       if(par %in% parstoskip) next
@@ -419,13 +470,15 @@ qs <- foreach(file = seacardat_forit) %dofuture% {
       
       qs_dat <- rbind(qs_dat, dat_par)
     }
+    
+    qs <- rbind(qs, qs_dat)
+    print(paste0(file_short, " done"))
+    
   }
-  
-  print(paste0(file_short, " done"))
-  rbind(qs, qs_dat)
 }
 
 qs2 <- rbindlist(qs)
+qs2 <- qs
 nums <- colnames(qs2[, .SD, .SDcols = is.numeric])
 for(n in nums){
   qs2[, (n) := plyr::round_any(eval(as.name(n)), 0.001)]
@@ -435,10 +488,6 @@ setorder(qs2, habitat, parameter)
 
 # fwrite(qs2, here::here(paste0("IndicatorQuantiles_", Sys.Date(), ".csv")))
 hs <- openxlsx::createStyle(textDecoration = "BOLD")
-openxlsx::write.xlsx(qs2, here::here(paste0("IndicatorQuantiles_", Sys.Date(), ".xlsx")), colNames = TRUE, headerStyle = hs, colWidths = "auto", firstActiveRow = TRUE)
+openxlsx::write.xlsx(qs2, here::here(paste0("IndicatorQuantiles_", Sys.Date(), ".xlsx")), colNames = TRUE, headerStyle = hs, colWidths = "auto")
 
 
-nope <- c("benthos", "Cairo", "cmdstanr", "colorspace", "colourpicker", "cowplot", "crayon", "dataRetrieval", "datawizard", "diagram", "DiagrammeR", "doFuture", "doRNG", 
-          "downlit", "DT", "egg", )
-R_Packages_forLoaner <- c("tidyverse", "data.table", "mapview", "sf", "brms", "nlme", "lme4", "gitcreds", "usethis", "janitor", "here", "knitr", "loo", "lubridate", 
-                          "magrittr", "markdown", "plyr", "rgeos", "remotes", "rmarkdown", "rstan")
