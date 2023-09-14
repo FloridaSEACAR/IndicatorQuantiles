@@ -1,0 +1,177 @@
+---
+date: "Last compiled on `r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: TRUE
+    toc_float: TRUE
+    toc_depth: 2
+    dev: png
+    keep_md: yes
+  word_document:
+    toc: TRUE
+    toc_depth: 2
+  pdf_document:
+    toc: TRUE
+    toc_depth: 2
+    dev: png
+    extra_dependencies: ["float"]
+    keep_md: yes
+urlcolor: blue
+title: 'Coral Reef Indicator Quantile Report'
+subtitle: 'SEACAR Analysis'
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(
+   warning=FALSE,
+   message=FALSE,
+   echo=FALSE,
+   dpi=200
+)
+```
+
+
+
+```{r libraries, message=FALSE, echo=FALSE, warning=FALSE, include=FALSE}
+library(knitr)
+library(data.table)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(ggpubr)
+library(scales)
+library(EnvStats)
+library(tidyr)
+library(kableExtra)
+library(tidyverse)
+library(stringr)
+library(glue)
+```
+
+
+\newpage
+# Overview
+
+`r cat(paste("The data file(s) used:", file_short, sep="\n"))`
+
+```{r table overview, results='asis', eval=TRUE}
+
+table_data <- qs %>% 
+  select(parameter, q_low, q_high, mean, n_tot, n_q_low, n_q_high)
+
+kable(table_data,
+      format="simple",
+      caption="Indicator Quantile Overview",
+      digits = 2) %>%
+  kable_styling(latex_options="scale_down",
+                position = "center")
+```
+
+
+\newpage
+# Quantile Low
+
+
+```{r low quantiles, results='asis'}
+
+low_values <- excluded_combined_df %>% filter(q_subset == "low")
+
+params <- unique(low_values$ParameterName)
+
+for (p in params) {
+  if(p %in% parstoskip) next
+  
+  subtitle <- glue("## {p}")
+  cat(subtitle, "\n\n")
+  
+  low_p_values <- low_values %>% 
+    filter(ParameterName == p) %>%
+    select(ProgramID, ProgramName, ProgramLocationID, SampleDate, CommonIdentifier, ResultValue)
+  
+  if (nrow(low_p_values) > 0) {
+    
+    excluded_program_id <- unique(low_p_values$ProgramID)
+  
+    low_value_table <- low_p_values %>%
+      select(-ProgramName)
+    
+    # Print data table
+    low_data_table <- kable(low_value_table,
+                            format="simple",
+                            caption="Excluded Values - Low Indicator Quantile") %>%
+      kable_styling(latex_options="scale_down",
+                    position = "center")
+    
+    print(low_data_table)
+    
+    # List programs with excluded data below, with their ID
+    cat("\n **Programs containing excluded data:** \n \n")
+    
+    for (p_id in excluded_program_id) {
+      p_name <- unlist(unique(low_p_values %>% filter(ProgramID == p_id) %>% select(ProgramName)))
+      cat(paste0("*",p_id,"*", " - ",p_name, "  \n"))
+    }
+    
+    cat("  \n")
+    cat("\\newpage")
+    
+  } else {
+    print(paste0("There are no Low Quantile Excluded Values for ", p))
+  }
+
+}
+
+```
+
+
+\newpage
+# Quantile High
+
+
+```{r high quantiles, results='asis', eval=TRUE}
+
+high_values <- excluded_combined_df %>% filter(q_subset == "high")
+
+params <- unique(high_values$ParameterName)
+
+for (p in params) {
+  subtitle <- glue("## {p}")
+  cat(subtitle, "\n\n")
+  
+  high_p_values <- high_values %>% 
+    filter(ParameterName == p) %>%
+    select(ProgramID, ProgramName, ProgramLocationID, SampleDate, CommonIdentifier, ResultValue)
+  
+  if (nrow(high_p_values) > 0) {
+    
+    excluded_program_id <- unique(high_p_values$ProgramID)
+  
+    high_value_table <- high_p_values %>%
+      select(-ProgramName)
+    
+    # Print data table
+    high_data_table <- kable(high_value_table,
+                            format="simple",
+                            caption="Excluded Values - High Indicator Quantile") %>%
+      kable_styling(latex_options="scale_down",
+                    position = "center")
+    
+    print(high_data_table)
+    
+    # List programs with excluded data below, with their ID
+    cat("\n **Programs containing excluded data:** \n \n")
+    
+    for (p_id in excluded_program_id) {
+      p_name <- unlist(unique(high_p_values %>% filter(ProgramID == p_id) %>% select(ProgramName)))
+      cat(paste0("*",p_id,"*", " - ",p_name, "  \n"))
+    }
+    
+    cat("  \n")
+    cat("\\newpage")
+    
+  } else {
+    print(paste0("There are no high Quantile Excluded Values for ", p))
+  }
+
+}
+```
