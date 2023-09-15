@@ -17,7 +17,7 @@ output:
     extra_dependencies: ["float"]
     keep_md: yes
 urlcolor: blue
-title: 'Coral Reef Indicator Quantile Report'
+title: '`r paste0(habitat," Indicator Quantile Report")`'
 subtitle: 'SEACAR Analysis'
 ---
 
@@ -48,130 +48,149 @@ library(stringr)
 library(glue)
 ```
 
+```{r, quantile_table_display function}
+
+quantile_table_display <- function(quantile) {
+  q_values <- flagged_combined_df %>% filter(q_subset == quantile)
+
+  params <- unique(q_values$ParameterName)
+
+  for (p in params) {
+    if(p %in% parstoskip) next
+    
+    subtitle <- glue("## {p}")
+    cat(subtitle, "\n\n")
+    
+    if (nrow(q_values) > 0) {
+      
+      q_par_values <- q_values %>% 
+        filter(ParameterName == p) %>%
+        arrange(ProgramID, SampleDate)
+      
+      if (habitat == "Oyster Reef") {
+        q_par_values <- q_par_values %>%
+          select(ProgramID, ProgramName, ProgramLocationID, SampleDate, ResultValue)
+      } else {
+        q_par_values <- q_par_values %>%
+          select(ProgramID, ProgramName, ProgramLocationID, SampleDate, CommonIdentifier, ResultValue)
+      }
+      
+      flagged_program_id <- unique(q_par_values$ProgramID)
+    
+      q_value_table <- q_par_values %>%
+        select(-ProgramName)
+      
+      # Print data table
+      q_data_table <- kable(q_value_table,
+                              format="simple",
+                              caption=paste0("Flagged Values - ", str_to_title(quantile), " Indicator Quantile")) %>%
+        kable_styling(latex_options="scale_down",
+                      position = "center")
+      
+      print(q_data_table)
+      
+      # List programs with flagged data below, with their ID
+      cat("\n **Programs containing flagged data:** \n \n")
+      
+      for (p_id in flagged_program_id) {
+        p_name <- unlist(unique(q_par_values %>% filter(ProgramID == p_id) %>% select(ProgramName)))
+        cat(paste0("*",p_id,"*", " - ",p_name, "  \n"))
+      }
+      
+      cat("  \n")
+      cat("\\newpage")
+      
+    } else {
+      print(paste0("There are no ", str_to_title(quantile) ,"Quantile Flagged Values for ", p))
+    }
+  
+  }
+}
+
+```
 
 \newpage
 # Overview
 
-`r cat(paste("The data file(s) used:", file_short, sep="\n"))`
+The following quantile thresholds are used for flagging "questionable" values:
+
+* Lower quantile: 0.001
+* Upper quantile: 0.999
+* Number of standard deviations: 3  
+
+The data file(s) used for the analysis: **`r file_short`**
+
+
 
 ```{r table overview, results='asis', eval=TRUE}
 
-table_data <- qs %>% 
-  select(parameter, q_low, q_high, mean, n_tot, n_q_low, n_q_high)
+table_data <- qs_dat %>%
+  filter({{habitat}} == habitat) %>%
+  select(parameter, q_low, q_high, mean, n_tot, n_q_low, n_q_high) %>%
+  arrange(-n_q_high, -n_q_low)
 
-kable(table_data,
+table_display <- kable(table_data,
       format="simple",
       caption="Indicator Quantile Overview",
       digits = 2) %>%
   kable_styling(latex_options="scale_down",
                 position = "center")
+
+if (any(str_detect(table_data$parameter, "(?i)Grazers and reef dependent species"))) {
+  table_data$parameter <- str_replace(table_data$parameter,
+                                      "(?i) - Grazers and reef dependent species$",
+                                      " - *G&RDS*")
+  
+  table_display <- kable(table_data,
+      format="simple",
+      caption="Indicator Quantile Overview",
+      digits = 2) %>%
+    kable_styling(latex_options="scale_down",
+                  position = "center") %>%
+    add_footnote("G&RDS: Grazers and reef dependent species")
+  
+} else {
+  
+  table_display <- kable(table_data,
+      format="simple",
+      caption="Indicator Quantile Overview",
+      digits = 2) %>%
+    kable_styling(latex_options="scale_down",
+                  position = "center")
+}
+
+print(table_display)
+
 ```
 
-
-\newpage
-# Quantile Low
 
 
 ```{r low quantiles, results='asis'}
 
-low_values <- excluded_combined_df %>% filter(q_subset == "low")
-
-params <- unique(low_values$ParameterName)
-
-for (p in params) {
-  if(p %in% parstoskip) next
-  
-  subtitle <- glue("## {p}")
-  cat(subtitle, "\n\n")
-  
-  low_p_values <- low_values %>% 
-    filter(ParameterName == p) %>%
-    select(ProgramID, ProgramName, ProgramLocationID, SampleDate, CommonIdentifier, ResultValue)
-  
-  if (nrow(low_p_values) > 0) {
-    
-    excluded_program_id <- unique(low_p_values$ProgramID)
-  
-    low_value_table <- low_p_values %>%
-      select(-ProgramName)
-    
-    # Print data table
-    low_data_table <- kable(low_value_table,
-                            format="simple",
-                            caption="Excluded Values - Low Indicator Quantile") %>%
-      kable_styling(latex_options="scale_down",
-                    position = "center")
-    
-    print(low_data_table)
-    
-    # List programs with excluded data below, with their ID
-    cat("\n **Programs containing excluded data:** \n \n")
-    
-    for (p_id in excluded_program_id) {
-      p_name <- unlist(unique(low_p_values %>% filter(ProgramID == p_id) %>% select(ProgramName)))
-      cat(paste0("*",p_id,"*", " - ",p_name, "  \n"))
-    }
-    
-    cat("  \n")
-    cat("\\newpage")
-    
-  } else {
-    print(paste0("There are no Low Quantile Excluded Values for ", p))
-  }
-
+q_values <- flagged_combined_df %>% filter(q_subset == "low")
+if (nrow(q_values) > 0) {
+  cat("\\newpage")
+  cat("# Low Quantile")
+  cat("\n\n")
+  quantile_table_display("low")
+} else {
+  cat(paste0("There are no Low Quantile flagged data entries for ", habitat))
 }
 
 ```
 
 
-\newpage
-# Quantile High
-
 
 ```{r high quantiles, results='asis', eval=TRUE}
 
-high_values <- excluded_combined_df %>% filter(q_subset == "high")
-
-params <- unique(high_values$ParameterName)
-
-for (p in params) {
-  subtitle <- glue("## {p}")
-  cat(subtitle, "\n\n")
-  
-  high_p_values <- high_values %>% 
-    filter(ParameterName == p) %>%
-    select(ProgramID, ProgramName, ProgramLocationID, SampleDate, CommonIdentifier, ResultValue)
-  
-  if (nrow(high_p_values) > 0) {
-    
-    excluded_program_id <- unique(high_p_values$ProgramID)
-  
-    high_value_table <- high_p_values %>%
-      select(-ProgramName)
-    
-    # Print data table
-    high_data_table <- kable(high_value_table,
-                            format="simple",
-                            caption="Excluded Values - High Indicator Quantile") %>%
-      kable_styling(latex_options="scale_down",
-                    position = "center")
-    
-    print(high_data_table)
-    
-    # List programs with excluded data below, with their ID
-    cat("\n **Programs containing excluded data:** \n \n")
-    
-    for (p_id in excluded_program_id) {
-      p_name <- unlist(unique(high_p_values %>% filter(ProgramID == p_id) %>% select(ProgramName)))
-      cat(paste0("*",p_id,"*", " - ",p_name, "  \n"))
-    }
-    
-    cat("  \n")
-    cat("\\newpage")
-    
-  } else {
-    print(paste0("There are no high Quantile Excluded Values for ", p))
-  }
-
+q_values <- flagged_combined_df %>% filter(q_subset == "high")
+if (nrow(q_values) > 0) {
+  cat("\\newpage")
+  cat("# High Quantile")
+  cat("\n\n")
+  quantile_table_display("high")
+} else {
+  cat(paste0("There are no High Quantile flagged data entries for ", habitat))
 }
+
 ```
