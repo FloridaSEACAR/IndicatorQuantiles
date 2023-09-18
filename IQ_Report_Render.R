@@ -97,12 +97,168 @@ make_dat <- function (dat, par, habitat) {
   return(dat_par)
 }
 
+# Create list of WC NUT files to process into single report
+wq_wc_nut_files <- seacardat[str_detect(seacardat, "Combined_WQ_WC_NUT_")]
+
+# Start processing report for "Combined_WQ_WC_NUT_" files if they exist
+if(length(wq_wc_nut_files) > 0) {
+  # create list to save flagged (high & low) data for WQ
+  wq_flagged_data_list <- list()
+  # create empty frame to store summary data
+  qs_dat <- create_empty_frame()
+  
+  for(file in wq_wc_nut_files){
+    # create shortened filename for display in report
+    file_short <- tail(str_split(file, "/")[[1]], 1)
+    
+    habitat <- "Water Column (Discrete)"
+    
+    # read in data file
+    dat <- fread(file, sep = "|", na.strings = nas)
+    
+    param <- gsub(" ", "_", unique(dat$ParameterName))
+    
+    for(par in unique(dat$ParameterName)){
+      if(par %in% parstoskip) next
+      
+      if(par == "Total Nitrogen"){
+        dat_par_all <- dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, .(parameter = unique(ParameterName),
+                                                                                                     median = median(ResultValue),
+                                                                                                     iqr = IQR(ResultValue),
+                                                                                                     qval_low = quant_low,
+                                                                                                     qval_high = quant_high,
+                                                                                                     q_low = quantile(ResultValue, probs = quant_low),
+                                                                                                     q_high = quantile(ResultValue, probs = quant_high),
+                                                                                                     mean = mean(ResultValue),
+                                                                                                     sd = sd(ResultValue),
+                                                                                                     num_sds = num_sds,
+                                                                                                     sdn_low = mean(ResultValue) - (num_sds * sd(ResultValue)),
+                                                                                                     sdn_high = mean(ResultValue) + (num_sds * sd(ResultValue)),
+                                                                                                     n_tot = length(ResultValue),
+                                                                                                     n_q_low = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue < dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, quantile(ResultValue, probs = quant_low)], ]),
+                                                                                                     n_q_high = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue > dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, quantile(ResultValue, probs = quant_high)], ]),
+                                                                                                     n_sdn_low = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue < dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, mean(ResultValue) - (num_sds * sd(ResultValue))], ]),
+                                                                                                     n_sdn_high = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue > dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, mean(ResultValue) + (num_sds * sd(ResultValue))], ]))]
+        dat_par_all[, tn := "All"]
+        
+        dat_par_nocalc <- dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & str_detect(SEACAR_QAQCFlagCode, "1Q", negate = TRUE), .(parameter = unique(ParameterName),
+                                                                                                                                                               median = median(ResultValue),
+                                                                                                                                                               iqr = IQR(ResultValue),
+                                                                                                                                                               qval_low = quant_low,
+                                                                                                                                                               qval_high = quant_high,
+                                                                                                                                                               q_low = quantile(ResultValue, probs = quant_low),
+                                                                                                                                                               q_high = quantile(ResultValue, probs = quant_high),
+                                                                                                                                                               mean = mean(ResultValue),
+                                                                                                                                                               sd = sd(ResultValue),
+                                                                                                                                                               num_sds = num_sds,
+                                                                                                                                                               sdn_low = mean(ResultValue) - (num_sds * sd(ResultValue)),
+                                                                                                                                                               sdn_high = mean(ResultValue) + (num_sds * sd(ResultValue)),
+                                                                                                                                                               n_tot = length(ResultValue),
+                                                                                                                                                               n_q_low = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue < dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, quantile(ResultValue, probs = quant_low)], ]),
+                                                                                                                                                               n_q_high = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue > dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, quantile(ResultValue, probs = quant_high)], ]),
+                                                                                                                                                               n_sdn_low = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue < dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, mean(ResultValue) - (num_sds * sd(ResultValue))], ]),
+                                                                                                                                                               n_sdn_high = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue > dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, mean(ResultValue) + (num_sds * sd(ResultValue))], ]))]
+        dat_par_nocalc[, tn := "No calc"]
+        
+        dat_par <- rbind(dat_par_all, dat_par_nocalc)
+        
+        
+      } else{
+        dat_par <- dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, .(parameter = unique(ParameterName),
+                                                                                                 tn = NA,
+                                                                                                 median = median(ResultValue),
+                                                                                                 iqr = IQR(ResultValue),
+                                                                                                 qval_low = quant_low,
+                                                                                                 qval_high = quant_high,
+                                                                                                 q_low = quantile(ResultValue, probs = quant_low),
+                                                                                                 q_high = quantile(ResultValue, probs = quant_high),
+                                                                                                 mean = mean(ResultValue),
+                                                                                                 sd = sd(ResultValue),
+                                                                                                 num_sds = num_sds,
+                                                                                                 sdn_low = mean(ResultValue) - (num_sds * sd(ResultValue)),
+                                                                                                 sdn_high = mean(ResultValue) + (num_sds * sd(ResultValue)),
+                                                                                                 n_tot = length(ResultValue),
+                                                                                                 n_q_low = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue < dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, quantile(ResultValue, probs = quant_low)], ]),
+                                                                                                 n_q_high = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue > dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, quantile(ResultValue, probs = quant_high)], ]),
+                                                                                                 n_sdn_low = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue < dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, mean(ResultValue) - (num_sds * sd(ResultValue))], ]),
+                                                                                                 n_sdn_high = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue > dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, mean(ResultValue) + (num_sds * sd(ResultValue))], ]))]
+        
+      }
+      
+      # Compute quantile for the low condition
+      quant_low_value <- dat %>%
+        filter(ParameterName == par, !is.na(ResultValue), MADup == 1, Include == 1) %>%
+        summarize(quant = quantile(ResultValue, probs = quant_low)) %>%
+        pull(quant)
+      
+      # Compute quantile for the high condition
+      quant_high_value <- dat %>%
+        filter(ParameterName == par, !is.na(ResultValue), MADup == 1, Include == 1) %>%
+        summarize(quant = quantile(ResultValue, probs = quant_high)) %>%
+        pull(quant)
+      
+      # Subset for values falling below quantile
+      subset_low <- dat %>%
+        filter(ParameterName == par, !is.na(ResultValue), MADup == 1, Include == 1, ResultValue < quant_low_value) %>%
+        mutate(q_subset = "low")
+      
+      # Subset for values above quantile
+      subset_high <- dat %>%
+        filter(ParameterName == par, !is.na(ResultValue), MADup == 1, Include == 1, ResultValue > quant_high_value) %>%
+        mutate(q_subset = "high")
+      
+      # Combine subsets for the current parameter
+      combined_subset <- bind_rows(subset_low, subset_high)
+      
+      # Append the combined data frame to the result list
+      wq_flagged_data_list[[par]] <- combined_subset
+      
+      dat_par[, `:=` (habitat = habitat,
+                      pid = Sys.getpid(),
+                      filename = file_short)]
+      
+      qs_dat <- rbind(qs_dat, dat_par)
+      
+      print(paste0(par, " sequencing complete"))
+    }
+  }
+  
+  qs <- rbind(qs, qs_dat)
+  
+  print("Combined_WQ_WC_NUT processing complete")
+  
+  wq_flagged_combined_df <- bind_rows(wq_flagged_data_list)
+  
+  # Data export
+  fwrite(wq_flagged_combined_df, "output/data/WC_Disc_IQ_data.txt", sep="|")
+  
+  # Rename file for recognition in IQ_Report.Rmd
+  flagged_combined_df <- wq_flagged_combined_df
+  
+  ### Report Rendering ###
+  file_out <- "WC_Disc_IQ_Report"
+  rmarkdown::render(input = "IQ_Report.Rmd",
+                    output_format = "pdf_document",
+                    output_file = paste0(file_out, ".pdf"),
+                    output_dir = "output",
+                    clean = TRUE)
+  
+  print(paste0(file_short, " rendering complete"))
+  unlink(paste0("output/",file_out, ".md"))
+  
+  
+}
+
+# Start report rendering for Coral, Nekton, SAV, Oyster
+
 for(file in seacardat){
   # create shortened filename for display in report
   file_short <- tail(str_split(file, "/")[[1]], 1)
   qs_dat <- create_empty_frame()
   
   if(str_detect(file, "Combined_WQ_WC_NUT_cont_")) next
+  
+  if(str_detect(file, "Combined_WQ_WC_NUT_")) next
   
   if(str_detect(file, "All_CORAL_Parameters")){
     habitat <- "Coral Reef"

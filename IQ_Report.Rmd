@@ -67,12 +67,12 @@ quantile_table_display <- function(quantile) {
         filter(ParameterName == p) %>%
         arrange(ProgramID, ProgramLocationID, SampleDate)
       
-      if (habitat == "Oyster Reef") {
-        q_par_values <- q_par_values %>%
-          select(ProgramID, ProgramName, ProgramLocationID, SampleDate, ResultValue)
-      } else {
+      if (habitat == "Coral Reef" | habitat == "Submerged Aquatic Vegetation" | habitat == "Water Column (Nekton)") {
         q_par_values <- q_par_values %>%
           select(ProgramID, ProgramName, ProgramLocationID, SampleDate, CommonIdentifier, ResultValue)
+      } else {
+        q_par_values <- q_par_values %>%
+          select(ProgramID, ProgramName, ProgramLocationID, SampleDate, ResultValue)
       }
       
       flagged_program_id <- unique(q_par_values$ProgramID)
