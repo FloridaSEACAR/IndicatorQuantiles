@@ -62,10 +62,10 @@ quantile_table_display <- function(quantile) {
     cat(subtitle, "\n\n")
     
     if (nrow(q_values) > 0) {
-      
+
       q_par_values <- q_values %>% 
         filter(ParameterName == p) %>%
-        arrange(ProgramID, SampleDate)
+        arrange(ProgramID, ProgramLocationID, SampleDate)
       
       if (habitat == "Oyster Reef") {
         q_par_values <- q_par_values %>%
@@ -127,6 +127,7 @@ The data file(s) used for the analysis: **`r file_short`**
 table_data <- qs_dat %>%
   filter({{habitat}} == habitat) %>%
   select(parameter, q_low, q_high, mean, n_tot, n_q_low, n_q_high) %>%
+  mutate(`%_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
   arrange(-n_q_high, -n_q_low)
 
 table_display <- kable(table_data,

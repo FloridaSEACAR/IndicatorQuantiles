@@ -9,8 +9,10 @@ library(stringr)
 library(dplyr)
 
 # Create output path if it doesn't already exist
-output_path <- "output/"
-if (!dir.exists(output_path)){dir.create(output_path, recursive = TRUE)}
+output_path <- c("output","output/data")
+for (path in output_path) {
+  if (!dir.exists(path)){dir.create(path, recursive = TRUE)}
+}
 
 #List data files
 seacardat <- list.files(here::here("SEACARdata"), full.names = TRUE)
@@ -133,13 +135,11 @@ for(file in seacardat){
       # Subset for values falling below quantile
       subset_low <- dat %>%
         filter(ParameterName == par, !is.na(ResultValue), MADup == 1, ResultValue < quant_low_value) %>%
-        select(ProgramID, ProgramName, ParameterName, ProgramLocationID, SampleDate, AreaID, CommonIdentifier, ResultValue) %>%
         mutate(q_subset = "low")
       
       # Subset for values above quantile
       subset_high <- dat %>%
         filter(ParameterName == par, !is.na(ResultValue), MADup == 1, ResultValue > quant_high_value) %>%
-        select(ProgramID, ProgramName, ParameterName, ProgramLocationID, SampleDate, AreaID, CommonIdentifier, ResultValue) %>%
         mutate(q_subset = "high")
       
       # Combine subsets for the current parameter
@@ -164,16 +164,19 @@ for(file in seacardat){
     
     flagged_combined_df <- bind_rows(flagged_data_list)
     
+    # Data export
+    fwrite(flagged_combined_df, paste0("output/data/",gsub(" ", "_", habitat),"_data.txt"), sep="|")
+    
     ### Report Rendering ###
-    file_out <- paste0(str_replace(habitat, " ", "_"), "_IQ_Report")
+    file_out <- paste0(gsub(" ", "_", habitat), "_IQ_Report")
     rmarkdown::render(input = "IQ_Report.Rmd",
                       output_format = "pdf_document",
                       output_file = paste0(file_out, ".pdf"),
-                      output_dir = output_path,
+                      output_dir = "output",
                       clean = TRUE)
     
     print(paste0(file_short, " rendering complete"))
-    unlink(paste0(output_path, "/", file_out, ".md"))
+    unlink(paste0("output/", file_out, ".md"))
     
   }
   
@@ -248,13 +251,11 @@ for(file in seacardat){
       # Subset for values falling below quantile
       subset_low <- dat %>%
         filter(ParameterName == par, !is.na(ResultValue), MADup == 1, ResultValue < quant_low_value) %>%
-        select(ProgramID, ProgramName, ParameterName, ProgramLocationID, SampleDate, AreaID, CommonIdentifier, ResultValue) %>%
         mutate(q_subset = "low")
       
       # Subset for values above quantile
       subset_high <- dat %>%
         filter(ParameterName == par, !is.na(ResultValue), MADup == 1, ResultValue > quant_high_value) %>%
-        select(ProgramID, ProgramName, ParameterName, ProgramLocationID, SampleDate, AreaID, CommonIdentifier, ResultValue) %>%
         mutate(q_subset = "high")
       
       # Combine subsets for the current parameter
@@ -273,16 +274,19 @@ for(file in seacardat){
     
     flagged_combined_df <- bind_rows(flagged_data_list)
     
+    # Data export
+    fwrite(flagged_combined_df, paste0("output/data/Water_Column_Nekton_data.txt"), sep="|")
+    
     ### Report Rendering ###
     file_out <- "Water_Column_Nekton_IQ_Report"
     rmarkdown::render(input = "IQ_Report.Rmd",
                       output_format = "pdf_document",
                       output_file = paste0(file_out, ".pdf"),
-                      output_dir = output_path,
+                      output_dir = "output",
                       clean = TRUE)
     
     print(paste0(file_short, " rendering complete"))
-    unlink(paste0(output_path, "/", file_out, ".md"))
+    unlink(paste0("output/", file_out, ".md"))
     
   }
   
@@ -320,13 +324,11 @@ for(file in seacardat){
       # Subset for values falling below quantile
       subset_low <- dat %>%
         filter(ParameterName == par, !is.na(ResultValue), MADup == 1, ResultValue < quant_low_value) %>%
-        select(ProgramID, ProgramName, ParameterName, ProgramLocationID, SampleDate, AreaID, ResultValue) %>%
         mutate(q_subset = "low")
       
       # Subset for values above quantile
       subset_high <- dat %>%
         filter(ParameterName == par, !is.na(ResultValue), MADup == 1, ResultValue > quant_high_value) %>%
-        select(ProgramID, ProgramName, ParameterName, ProgramLocationID, SampleDate, AreaID, ResultValue) %>%
         mutate(q_subset = "high")
       
       # Combine subsets for the current parameter
@@ -351,16 +353,19 @@ for(file in seacardat){
     
     flagged_combined_df <- bind_rows(flagged_data_list)
     
+    # Data export
+    fwrite(flagged_combined_df, paste0("output/data/",gsub(" ", "_", habitat),"_data.txt"), sep="|")
+    
     ### Report Rendering ###
-    file_out <- paste0(str_replace(habitat, " ", "_"), "_IQ_Report")
+    file_out <- paste0(gsub(" ", "_", habitat), "_IQ_Report")
     rmarkdown::render(input = "IQ_Report.Rmd",
                       output_format = "pdf_document",
                       output_file = paste0(file_out, ".pdf"),
-                      output_dir = output_path,
+                      output_dir = "output",
                       clean = TRUE)
     
     print(paste0(file_short, " rendering complete"))
-    unlink(paste0(output_path, "/", file_out, ".md"))
+    unlink(paste0("output/", file_out, ".md"))
   }
   
   if(str_detect(file, "All_SAV_Parameters")) {
@@ -393,13 +398,11 @@ for(file in seacardat){
       # Subset for values falling below quantile
       subset_low <- dat %>%
         filter(ParameterName == par, !is.na(ResultValue), MADup == 1, ResultValue < quant_low_value) %>%
-        select(ProgramID, ProgramName, ParameterName, ProgramLocationID, SampleDate, AreaID, CommonIdentifier, ResultValue) %>%
         mutate(q_subset = "low")
       
       # Subset for values above quantile
       subset_high <- dat %>%
         filter(ParameterName == par, !is.na(ResultValue), MADup == 1, ResultValue > quant_high_value) %>%
-        select(ProgramID, ProgramName, ParameterName, ProgramLocationID, SampleDate, AreaID, CommonIdentifier, ResultValue) %>%
         mutate(q_subset = "high")
       
       # Combine subsets for the current parameter
@@ -424,16 +427,19 @@ for(file in seacardat){
     
     flagged_combined_df <- bind_rows(flagged_data_list)
     
+    # Data export
+    fwrite(flagged_combined_df, paste0("output/data/",gsub(" ", "_", habitat),"_data.txt"), sep="|")
+    
     ### Report Rendering ###
-    file_out <- paste0(str_replace(habitat, " ", "_"), "_IQ_Report")
+    file_out <- paste0(gsub(" ", "_", habitat), "_IQ_Report")
     rmarkdown::render(input = "IQ_Report.Rmd",
                       output_format = "pdf_document",
                       output_file = paste0(file_out, ".pdf"),
-                      output_dir = output_path,
+                      output_dir = "output",
                       clean = TRUE)
     
     print(paste0(file_short, " rendering complete"))
-    unlink(paste0(output_path, "/", file_out, ".md"))
+    unlink(paste0("output/", file_out, ".md"))
   }
   
 }
