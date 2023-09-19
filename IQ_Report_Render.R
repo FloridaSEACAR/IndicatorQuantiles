@@ -16,6 +16,8 @@ for (path in output_path) {
 
 #List data files
 seacardat <- list.files(here::here("SEACARdata"), full.names = TRUE)
+#Uncomment
+# seacardat <- seacardat[c(0:4)]
 
 #Set which parameters to skip (e.g., those with DEAR thresholds and/or expected values)
 seacardat <- subset(seacardat, str_detect(seacardat, "Oxygen|pH|Secchi|Salinity|Conductivity|Temperature|Blanquet|Percent", negate = TRUE))
@@ -107,6 +109,8 @@ if(length(wq_wc_nut_files) > 0) {
   # create empty frame to store summary data
   qs_dat <- create_empty_frame()
   
+  parameter_list <- list()
+  file_short_list <- list()
   for(file in wq_wc_nut_files){
     # create shortened filename for display in report
     file_short <- tail(str_split(file, "/")[[1]], 1)
@@ -115,6 +119,8 @@ if(length(wq_wc_nut_files) > 0) {
     
     # read in data file
     dat <- fread(file, sep = "|", na.strings = nas)
+    
+    params <- unique(dat$ParameterName)
     
     param <- gsub(" ", "_", unique(dat$ParameterName))
     
@@ -212,6 +218,10 @@ if(length(wq_wc_nut_files) > 0) {
       
       # Append the combined data frame to the result list
       wq_flagged_data_list[[par]] <- combined_subset
+      # Append file_short to include all file names for WQ
+      file_short_list[[par]] <- file_short
+      # Append params to include as potential params in overview
+      parameter_list[[par]] <- params
       
       dat_par[, `:=` (habitat = habitat,
                       pid = Sys.getpid(),
@@ -228,6 +238,8 @@ if(length(wq_wc_nut_files) > 0) {
   print("Combined_WQ_WC_NUT processing complete")
   
   wq_flagged_combined_df <- bind_rows(wq_flagged_data_list)
+  short_files <- bind_rows(file_short_list)
+  params_list <- bind_rows(parameter_list)
   
   # Data export
   fwrite(wq_flagged_combined_df, "output/data/WC_Disc_IQ_data.txt", sep="|")
@@ -265,6 +277,7 @@ for(file in seacardat){
     
     # read in data file
     dat <- fread(file, sep = "|", na.strings = nas)
+    params_list <- unique(dat$ParameterName)
     
     # create list to save flagged (high & low) data
     flagged_data_list <- list()
@@ -341,6 +354,7 @@ for(file in seacardat){
     
     # read in data file
     dat <- fread(file, sep = "|", na.strings = nas)
+    params_list <- unique(dat$ParameterName)
     
     dat[EffortCorrection_100m2 > 0, ResultValue := ResultValue/EffortCorrection_100m2]
     dat[, `:=` (ParameterName = "Count/100m2 (effort corrected)")]
@@ -451,6 +465,7 @@ for(file in seacardat){
     
     # read in data file
     dat <- fread(file, sep = "|", na.strings = nas)
+    params_list <- unique(dat$ParameterName)
     
     dat[ParameterName != "Density" & ParameterName != "Reef Height" & ParameterName != "Percent Live", 
         ParameterName := paste0(ParameterName, "/", QuadSize_m2, "m2")]
@@ -529,6 +544,7 @@ for(file in seacardat){
     habitat <- "Submerged Aquatic Vegetation"
     
     dat <- fread(file, sep = "|", na.strings = nas)
+    params_list <- unique(dat$ParameterName)
     
     # create list to save flagged (high & low) data
     flagged_data_list <- list()

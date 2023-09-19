@@ -48,66 +48,6 @@ library(stringr)
 library(glue)
 ```
 
-```{r, quantile_table_display function}
-
-quantile_table_display <- function(quantile) {
-  q_values <- flagged_combined_df %>% filter(q_subset == quantile)
-
-  params <- unique(q_values$ParameterName)
-
-  for (p in params) {
-    if(p %in% parstoskip) next
-    
-    subtitle <- glue("## {p}")
-    cat(subtitle, "\n\n")
-    
-    if (nrow(q_values) > 0) {
-
-      q_par_values <- q_values %>% 
-        filter(ParameterName == p) %>%
-        arrange(ProgramID, ProgramLocationID, SampleDate)
-      
-      if (habitat == "Coral Reef" | habitat == "Submerged Aquatic Vegetation" | habitat == "Water Column (Nekton)") {
-        q_par_values <- q_par_values %>%
-          select(ProgramID, ProgramName, ProgramLocationID, SampleDate, CommonIdentifier, ResultValue)
-      } else {
-        q_par_values <- q_par_values %>%
-          select(ProgramID, ProgramName, ProgramLocationID, SampleDate, ResultValue)
-      }
-      
-      flagged_program_id <- unique(q_par_values$ProgramID)
-    
-      q_value_table <- q_par_values %>%
-        select(-ProgramName)
-      
-      # Print data table
-      q_data_table <- kable(q_value_table,
-                              format="simple",
-                              caption=paste0("Flagged Values - ", str_to_title(quantile), " Indicator Quantile")) %>%
-        kable_styling(latex_options="scale_down",
-                      position = "center")
-      
-      print(q_data_table)
-      
-      # List programs with flagged data below, with their ID
-      cat("\n **Programs containing flagged data:** \n \n")
-      
-      for (p_id in flagged_program_id) {
-        p_name <- unlist(unique(q_par_values %>% filter(ProgramID == p_id) %>% select(ProgramName)))
-        cat(paste0("*",p_id,"*", " - ",p_name, "  \n"))
-      }
-      
-      cat("  \n")
-      cat("\\newpage")
-      
-    } else {
-      print(paste0("There are no ", str_to_title(quantile) ,"Quantile Flagged Values for ", p))
-    }
-  
-  }
-}
-
-```
 
 \newpage
 # Overview
@@ -115,20 +55,59 @@ quantile_table_display <- function(quantile) {
 The following quantile thresholds are used for flagging "questionable" values:
 
 * Lower quantile: 0.001
-* Upper quantile: 0.999
-* Number of standard deviations: 3  
+* Upper quantile: 0.999 
 
-The data file(s) used for the analysis: **`r file_short`**
 
+Potential Included Parameters:
+```{r, results='asis'}
+cat("  \n\n")
+for(param in sort(params_list)){
+  cat(paste0("* ", param))
+  cat("\n")
+}
+```
+
+
+
+
+```{r file_name display, results='asis'}
+## display all file names for WC, or just one filename for others
+cat("  \n\n")
+if(habitat=="Water Column (Discrete)"){
+  cat("The data files used for the analysis:  \n\n")
+  for(file in short_files){
+    cat(paste0("* **", file,"**"))
+    cat("\n")
+  }
+} else {
+  cat(paste0("The data file used for the analysis: **",file_short,"**"))
+  cat("\n")
+}
+
+```
 
 
 ```{r table overview, results='asis', eval=TRUE}
-
-table_data <- qs_dat %>%
-  filter({{habitat}} == habitat) %>%
-  select(parameter, q_low, q_high, mean, n_tot, n_q_low, n_q_high) %>%
-  mutate(`%_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
-  arrange(-n_q_high, -n_q_low)
+options(knitr.kable.NA = "")
+if(habitat=="Water Column (Discrete)"){
+  qs_dat2 <- qs_dat %>%
+    mutate(parameter = if_else(
+      parameter == "Total Nitrogen",
+      paste0("Nitrogen ", "(", tn, ")"),
+      parameter
+    ))
+  table_data <- qs_dat2 %>%
+    filter({{habitat}} == habitat) %>%
+    select(parameter, q_low, q_high, mean, n_tot, n_q_low, n_q_high) %>%
+    mutate(`%_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
+    arrange(parameter)
+} else {
+  table_data <- qs_dat %>%
+    filter({{habitat}} == habitat) %>%
+    select(parameter, q_low, q_high, mean, n_tot, n_q_low, n_q_high) %>%
+    mutate(`%_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
+    arrange(parameter)
+}
 
 table_display <- kable(table_data,
       format="simple",
@@ -151,16 +130,86 @@ if (any(str_detect(table_data$parameter, "(?i)Grazers and reef dependent species
     add_footnote("G&RDS: Grazers and reef dependent species")
   
 } else {
-  
   table_display <- kable(table_data,
-      format="simple",
-      caption="Indicator Quantile Overview",
-      digits = 2) %>%
-    kable_styling(latex_options="scale_down",
-                  position = "center")
+    format="simple",
+    caption="Indicator Quantile Overview",
+    digits = 2) %>%
+  kable_styling(latex_options="scale_down",
+                position = "center")
 }
 
 print(table_display)
+# as_image(table_display)
+
+
+```
+
+
+
+```{r, quantile_table_display function}
+
+quantile_table_display <- function(quantile) {
+  q_values <- flagged_combined_df %>% filter(q_subset == quantile)
+
+  params <- unique(q_values$ParameterName)
+
+  for (p in params) {
+    if(p %in% parstoskip) next
+
+    if (nrow(q_values %>% filter(ParameterName == p)) > 0) {
+      
+      subtitle <- glue("## {p}")
+      cat(subtitle, "\n\n")
+      
+      q_par_values <- q_values %>% 
+        filter(ParameterName == p) %>%
+        arrange(ProgramID, ProgramLocationID, SampleDate)
+      
+      if (habitat == "Coral Reef" | habitat == "Submerged Aquatic Vegetation" | habitat == "Water Column (Nekton)") {
+        q_par_values <- q_par_values %>%
+          select(RowID, ProgramID, ProgramName, ProgramLocationID, SampleDate, CommonIdentifier, ResultValue)
+      } else {
+        q_par_values <- q_par_values %>%
+          select(RowID, ProgramID, ProgramName, ProgramLocationID, SampleDate, ResultValue)
+      }
+      
+      flagged_program_id <- unique(q_par_values$ProgramID)
+    
+      q_value_table <- q_par_values %>%
+        select(-ProgramName)
+      
+      low_thres <- qs_dat %>% filter(parameter==p) %>% pull(q_low)
+      high_thres <- qs_dat %>% filter(parameter==p) %>% pull(q_high)
+      
+      caption <- ifelse(quantile == "low", low_thres, high_thres)
+      
+      # Print data table
+      q_data_table <- kable(q_value_table,
+                            format="simple",
+                            digits = 2,
+                            caption=paste0("Flagged Values - ", str_to_title(quantile), " Indicator Quantile: *", round(caption,5),"*")) %>%
+        kable_styling(latex_options="scale_down",
+                      position = "center")
+      
+      print(q_data_table)
+      
+      # List programs with flagged data below, with their ID
+      cat("\n **Programs containing flagged data:** \n \n")
+      
+      for (p_id in flagged_program_id) {
+        p_name <- unlist(unique(q_par_values %>% filter(ProgramID == p_id) %>% select(ProgramName)))
+        cat(paste0("*",p_id,"*", " - ",p_name, "  \n"))
+      }
+      
+      cat("  \n")
+      cat("\\newpage")
+      
+    } else {
+      cat(paste0("There are no *", str_to_title(quantile) ,"* Quantile Flagged Values for ", p))
+    }
+  
+  }
+}
 
 ```
 
