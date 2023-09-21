@@ -4,15 +4,15 @@ output:
   html_document:
     toc: TRUE
     toc_float: TRUE
-    toc_depth: 2
+    toc_depth: 3
     dev: png
     keep_md: yes
   word_document:
     toc: TRUE
-    toc_depth: 2
+    toc_depth: 3
   pdf_document:
     toc: TRUE
-    toc_depth: 2
+    toc_depth: 3
     dev: png
     extra_dependencies: ["float"]
     keep_md: yes
@@ -48,14 +48,51 @@ library(stringr)
 library(glue)
 ```
 
-
 \newpage
 # Overview
 
+## Purpose
+
+
+The purpose of the indicator quantiles is to flag records that are "unusual" relative to all of the data in the DDI for a given indicator in order to facilitate QA/QC. 
+They are not used to filter any of the data for SEACAR analyses, and the presence of a LowerQuantile or UpperQuantile flag on a DDI record 
+alone does not necessarily indicate there is any issue with the record (neither does the absence of a LowerQuantile or UpperQuantile flag 
+necessarily mean that a data record is correct).
+
+
+## Relevant file locations
+
+Current values can be found in the "LowQuantile" and "HighQuantile" columns of the "Ref_Parameters" worksheet.
+
+The R script described below and the output file can be found in the 
+*FloridaSEACAR* *IndicatorQuantiles* repository on GitHub:  
+
+* [https://github.com/FloridaSEACAR/IndicatorQuantiles](https://github.com/FloridaSEACAR/IndicatorQuantiles)
+
+
+## Process steps  
+
+
+**IQ_Report_Render.R & IQ_Report.Rmd**  
+
+1.  The *IQ_Report_Render.R* script lists all files in a given directory and filters it to a list of DDI exports to 
+evaluate considering a list of parameters to skip (user-defined).  
+2.  User sets the desired upper and lower quantile thresholds, as well as a number of standard deviations away from the mean to use for the calculations.  
+3.  User sets the string value(s) in the DDI exports that should be considered as NA values.  
+4.  The remainder of the script loops through the file list, returning the values listed below and binding them together by row into a 
+single Excel spreadsheet that is saved to the User's working directory.  
+5.  For each habitat included in the User's working directory a PDF report will be created in the "output" folder using *IQ_Report.Rmd*,
+which provides an overview of questionable / flagged values.  
+6.  In addition to the PDF reports, each habitat will provide a .txt data output file in the "output/data" folder containing questionable values.
+
+
+\newpage
+# Summary
+
 The following quantile thresholds are used for flagging "questionable" values:
 
-* Lower quantile: 0.001
-* Upper quantile: 0.999 
+* Lower quantile: **`r quant_low`**
+* Upper quantile: **`r quant_high`**
 
 
 Potential Included Parameters:
@@ -66,7 +103,6 @@ for(param in sort(params_list)){
   cat("\n")
 }
 ```
-
 
 
 
@@ -125,34 +161,39 @@ if (any(str_detect(table_data$parameter, "(?i)Grazers and reef dependent species
       format="simple",
       caption="Indicator Quantile Overview",
       digits = 2) %>%
-    kable_styling(latex_options="scale_down",
-                  position = "center") %>%
-    add_footnote("G&RDS: Grazers and reef dependent species")
-  
-} else {
-  table_display <- kable(table_data,
-    format="simple",
-    caption="Indicator Quantile Overview",
-    digits = 2) %>%
   kable_styling(latex_options="scale_down",
-                position = "center")
+                position = "center") %>%
+    add_footnote("G&RDS: Grazers and reef dependent species  \n\n")
 }
 
-print(table_display)
-# as_image(table_display)
+print(table_display)  
 
+cat("\n\n")
 
 ```
 
+*q_low*: Value corresponding to the qval_low quantile for the parameter in the DDI export.  
+
+*q_high*: Value corresponding to the qval_high quantile for the parameter in the DDI export.  
+
+*mean*: Mean value for the parameter in the DDI export.  
+
+*n_tot*: Total number of records in the DDI export for the parameter.  
+
+*n_q_low*: Number of records in the DDI export that are below q_low for the parameter.  
+
+*n_q_high*: Number of records in the DDI export that are above q_high for the parameter.  
+
+\%_*flagged*: Proportion of total records in the DDI export for the parameter which have been flagged as above q_high, or below q_low.  
 
 
-```{r, quantile_table_display function}
+```{r, quantile_table_display function, eval=TRUE}
 
 quantile_table_display <- function(quantile) {
   q_values <- flagged_combined_df %>% filter(q_subset == quantile)
 
   params <- unique(q_values$ParameterName)
-
+  
   for (p in params) {
     if(p %in% parstoskip) next
 
@@ -181,13 +222,13 @@ quantile_table_display <- function(quantile) {
       low_thres <- qs_dat %>% filter(parameter==p) %>% pull(q_low)
       high_thres <- qs_dat %>% filter(parameter==p) %>% pull(q_high)
       
-      caption <- ifelse(quantile == "low", low_thres, high_thres)
+      threshold <- ifelse(quantile == "low", low_thres, high_thres)
       
       # Print data table
       q_data_table <- kable(q_value_table,
                             format="simple",
                             digits = 2,
-                            caption=paste0("Flagged Values - ", str_to_title(quantile), " Indicator Quantile: *", round(caption,5),"*")) %>%
+                            caption=paste0("Flagged Values - ", str_to_title(quantile), " Indicator Quantile: **", round(threshold,5),"**")) %>%
         kable_styling(latex_options="scale_down",
                       position = "center")
       
@@ -215,7 +256,7 @@ quantile_table_display <- function(quantile) {
 
 
 
-```{r low quantiles, results='asis'}
+```{r low quantiles, results='asis', eval=TRUE}
 
 q_values <- flagged_combined_df %>% filter(q_subset == "low")
 if (nrow(q_values) > 0) {
