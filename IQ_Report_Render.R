@@ -17,16 +17,17 @@ for (path in output_path) {
 #List data files
 seacardat <- list.files(here::here("SEACARdata"), full.names = TRUE)
 #Uncomment
-# seacardat <- seacardat[c(0:4)]
+# seacardat <- seacardat[5]
 
 #Set which parameters to skip (e.g., those with DEAR thresholds and/or expected values)
 seacardat <- subset(seacardat, str_detect(seacardat, "Oxygen|pH|Secchi|Salinity|Conductivity|Temperature|Blanquet|Percent", negate = TRUE))
 parstoskip <- c("[PercentCover-SpeciesComposition_%]", 
-                "[Total/CanopyPercentCover-SpeciesComposition_%]", 
+                "[Total/CanopyPercentCover-SpeciesComposition_%]",
                 "Percent Live",
                 "[PercentCover-SpeciesComposition_%]",
                 "[%LiveTissue_%]",
-                "Presence")
+                "Presence",
+                "Shoot Count")
 
 #Set quantile thresholds for flagging "questionable" values
 quant_low <- 0.001
@@ -40,7 +41,7 @@ nas <- c("NULL")
 create_empty_frame <- function() {
   return(data.table(
     habitat = character(),
-    tn = character(),
+    sub_parameter = character(),
     parameter = character(),
     median = numeric(),
     iqr = numeric(),
@@ -70,7 +71,9 @@ qs2 <- create_empty_frame()
 ### Combined aggregating function ###
 make_dat <- function (dat, par, habitat) {
   
-  if (habitat == "Coral Reef" | habitat == "Water Column (Nekton)" | habitat == "Oyster Reef" | habitat == "Submerged Aquatic Vegetation") {
+  if (habitat == "Coral Reef" | habitat == "Water Column (Nekton)" | habitat == "Oyster Reef" | 
+      habitat == "Submerged Aquatic Vegetation" | habitat == "Coastal Wetlands") {
+    
     filtered_dat <- dat[ParameterName == par & !is.na(ResultValue) & MADup == 1]
   } else {
     filtered_dat <- dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1]
@@ -78,7 +81,7 @@ make_dat <- function (dat, par, habitat) {
   
   # Compute the aggregate statistics based on the filtered data
   dat_par <- filtered_dat[, .(parameter = unique(ParameterName),
-                              tn = NA,
+                              sub_parameter = NA,
                               median = median(ResultValue),
                               iqr = IQR(ResultValue),
                               qval_low = quant_low,
@@ -145,7 +148,7 @@ if(length(wq_wc_nut_files) > 0) {
                                                                                                      n_q_high = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue > dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, quantile(ResultValue, probs = quant_high)], ]),
                                                                                                      n_sdn_low = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue < dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, mean(ResultValue) - (num_sds * sd(ResultValue))], ]),
                                                                                                      n_sdn_high = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue > dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, mean(ResultValue) + (num_sds * sd(ResultValue))], ]))]
-        dat_par_all[, tn := "All"]
+        dat_par_all[, sub_parameter := "All"]
         
         dat_par_nocalc <- dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & str_detect(SEACAR_QAQCFlagCode, "1Q", negate = TRUE), .(parameter = unique(ParameterName),
                                                                                                                                                                median = median(ResultValue),
@@ -164,14 +167,14 @@ if(length(wq_wc_nut_files) > 0) {
                                                                                                                                                                n_q_high = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue > dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, quantile(ResultValue, probs = quant_high)], ]),
                                                                                                                                                                n_sdn_low = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue < dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, mean(ResultValue) - (num_sds * sd(ResultValue))], ]),
                                                                                                                                                                n_sdn_high = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1 & ResultValue > dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, mean(ResultValue) + (num_sds * sd(ResultValue))], ]))]
-        dat_par_nocalc[, tn := "No calc"]
+        dat_par_nocalc[, sub_parameter := "No calc"]
         
         dat_par <- rbind(dat_par_all, dat_par_nocalc)
         
         
       } else{
         dat_par <- dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & Include == 1, .(parameter = unique(ParameterName),
-                                                                                                 tn = NA,
+                                                                                                 sub_parameter = NA,
                                                                                                  median = median(ResultValue),
                                                                                                  iqr = IQR(ResultValue),
                                                                                                  qval_low = quant_low,
@@ -277,6 +280,7 @@ for(file in seacardat){
     
     # read in data file
     dat <- fread(file, sep = "|", na.strings = nas)
+    
     params_list <- unique(dat$ParameterName)
     
     # create list to save flagged (high & low) data
@@ -381,7 +385,7 @@ for(file in seacardat){
       
       # Create separate table entries for Grazers & Reef Dependent Species (Coral Reef classified)
       dat_par2 <- dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & SpeciesGroup1 == "Grazers and reef dependent species", .(parameter = paste0(unique(ParameterName), " - Grazers and reef dependent species"),
-                                                                                                                                         tn = NA,
+                                                                                                                                         sub_parameter = NA,
                                                                                                                                          median = median(ResultValue),
                                                                                                                                          iqr = IQR(ResultValue),
                                                                                                                                          qval_low = quant_low,
@@ -552,8 +556,61 @@ for(file in seacardat){
     for(par in unique(dat$ParameterName)){
       if(par %in% parstoskip) next
       
-      # Create data table snippet for excel export
-      dat_par <- make_dat(dat, par, habitat)
+      if(par %in% c("Percent Occurrence", "Percent Cover")){
+        # Combine Total seagrass and Total_SAV
+        species_total_group <- c("Total seagrass", "Total_SAV")
+        
+        filtered_dat_total <- dat[ParameterName == par & !is.na(ResultValue) & CommonIdentifier %in% species_total_group & MADup == 1]
+        
+        dat_par_total <- filtered_dat_total[, .(parameter = unique(ParameterName),
+                                                median = median(ResultValue),
+                                                iqr = IQR(ResultValue),
+                                                qval_low = quant_low,
+                                                qval_high = quant_high,
+                                                q_low = quantile(ResultValue, probs = quant_low),
+                                                q_high = quantile(ResultValue, probs = quant_high),
+                                                mean = mean(ResultValue),
+                                                sd = sd(ResultValue),
+                                                num_sds = num_sds,
+                                                sdn_low = mean(ResultValue) - (num_sds * sd(ResultValue)),
+                                                sdn_high = mean(ResultValue) + (num_sds * sd(ResultValue)),
+                                                n_tot = length(ResultValue),
+                                                n_q_low = nrow(filtered_dat_total[ResultValue < quantile(ResultValue, probs = quant_low)]),
+                                                n_q_high = nrow(filtered_dat_total[ResultValue > quantile(ResultValue, probs = quant_high)]),
+                                                n_sdn_low = nrow(filtered_dat_total[ResultValue < mean(ResultValue) - (num_sds * sd(ResultValue))]),
+                                                n_sdn_high = nrow(filtered_dat_total[ResultValue > mean(ResultValue) + (num_sds * sd(ResultValue))]) )]
+        
+        dat_par_total[, sub_parameter := "Total"]
+        
+        filtered_dat_species <- dat[ParameterName == par & !is.na(ResultValue) & !CommonIdentifier %in% species_total_group & MADup == 1]
+        
+        dat_par_species <- filtered_dat_species[, .(parameter = unique(ParameterName),
+                                                    median = median(ResultValue),
+                                                    iqr = IQR(ResultValue),
+                                                    qval_low = quant_low,
+                                                    qval_high = quant_high,
+                                                    q_low = quantile(ResultValue, probs = quant_low),
+                                                    q_high = quantile(ResultValue, probs = quant_high),
+                                                    mean = mean(ResultValue),
+                                                    sd = sd(ResultValue),
+                                                    num_sds = num_sds,
+                                                    sdn_low = mean(ResultValue) - (num_sds * sd(ResultValue)),
+                                                    sdn_high = mean(ResultValue) + (num_sds * sd(ResultValue)),
+                                                    n_tot = length(ResultValue),
+                                                    n_q_low = nrow(filtered_dat_species[ResultValue < quantile(ResultValue, probs = quant_low)]),
+                                                    n_q_high = nrow(filtered_dat_species[ResultValue > quantile(ResultValue, probs = quant_high)]),
+                                                    n_sdn_low = nrow(filtered_dat_species[ResultValue < mean(ResultValue) - (num_sds * sd(ResultValue))]),
+                                                    n_sdn_high = nrow(filtered_dat_species[ResultValue > mean(ResultValue) + (num_sds * sd(ResultValue))]) )]
+        
+        dat_par_species[, sub_parameter := "Species"]
+        
+        dat_par <- rbind(dat_par_total, dat_par_species)
+      } else {
+        
+        # Create data table snippet for excel export
+        dat_par <- make_dat(dat, par, habitat)
+        
+      }
       
       # Compute quantile for the low condition
       quant_low_value <- dat %>%
@@ -612,6 +669,79 @@ for(file in seacardat){
     
     print(paste0(file_short, " rendering complete"))
     unlink(paste0("output/", file_out, ".md"))
+  }
+  
+  if(str_detect(file, "All_CW_Parameters")) {
+    
+    dat <- fread(file, sep = "|", na.strings = nas)
+    
+    habitat <- "Coastal Wetlands"
+    
+    params_list <- unique(dat$ParameterName)
+    
+    # create list to save flagged (high & low) data
+    flagged_data_list <- list()
+    
+    for(par in unique(dat$ParameterName)){
+      if(par %in% parstoskip) next
+      
+      dat_par <- make_dat(dat, par, habitat)
+      
+      # Compute quantile for the low condition
+      quant_low_value <- dat %>%
+        filter(ParameterName == par, !is.na(ResultValue), MADup == 1) %>%
+        summarize(quant = quantile(ResultValue, probs = quant_low)) %>%
+        pull(quant)
+      
+      # Compute quantile for the high condition
+      quant_high_value <- dat %>%
+        filter(ParameterName == par, !is.na(ResultValue), MADup == 1) %>%
+        summarize(quant = quantile(ResultValue, probs = quant_high)) %>%
+        pull(quant)
+      
+      # Subset for values falling below quantile
+      subset_low <- dat %>%
+        filter(ParameterName == par, !is.na(ResultValue), MADup == 1, ResultValue < quant_low_value) %>%
+        mutate(q_subset = "low")
+      
+      # Subset for values above quantile
+      subset_high <- dat %>%
+        filter(ParameterName == par, !is.na(ResultValue), MADup == 1, ResultValue > quant_high_value) %>%
+        mutate(q_subset = "high")
+      
+      # Combine subsets for the current parameter
+      combined_subset <- bind_rows(subset_low, subset_high)
+      
+      # Append the combined data frame to the result list
+      flagged_data_list[[par]] <- combined_subset
+      
+      dat_par[, `:=` (habitat = habitat,
+                      pid = Sys.getpid(),
+                      filename = file_short)]
+      
+      qs_dat <- rbind(qs_dat, dat_par)
+    }
+    
+    qs <- rbind(qs, qs_dat)
+    
+    print(paste0(file_short, " export done"))
+    
+    flagged_combined_df <- bind_rows(flagged_data_list)
+    
+    # Data export
+    fwrite(flagged_combined_df, paste0("output/data/",gsub(" ", "_", habitat),"_data.txt"), sep="|")
+    
+    ### Report Rendering ###
+    file_out <- paste0(gsub(" ", "_", habitat), "_IQ_Report")
+    rmarkdown::render(input = "IQ_Report.Rmd",
+                      output_format = "pdf_document",
+                      output_file = paste0(file_out, ".pdf"),
+                      output_dir = "output",
+                      clean = TRUE)
+    
+    print(paste0(file_short, " rendering complete"))
+    unlink(paste0("output/", file_out, ".md"))
+
   }
   
 }

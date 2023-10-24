@@ -99,6 +99,7 @@ Potential Included Parameters:
 ```{r, results='asis'}
 cat("  \n\n")
 for(param in sort(params_list)){
+  if(param %in% parstoskip) next
   cat(paste0("* ", param))
   cat("\n")
 }
@@ -129,13 +130,21 @@ if(habitat=="Water Column (Discrete)"){
   qs_dat2 <- qs_dat %>%
     mutate(parameter = if_else(
       parameter == "Total Nitrogen",
-      paste0("Nitrogen ", "(", tn, ")"),
+      paste0("Nitrogen ", "(", sub_parameter, ")"),
       parameter
     ))
   table_data <- qs_dat2 %>%
     filter({{habitat}} == habitat) %>%
-    select(parameter, q_low, q_high, mean, n_tot, n_q_low, n_q_high) %>%
+    select(parameter, sub_parameter, q_low, q_high, mean, n_tot, n_q_low, n_q_high) %>%
     mutate(`%_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
+    rename("sub_param" = "sub_parameter") %>%
+    arrange(parameter)
+} else if(habitat == "Submerged Aquatic Vegetation"){
+  table_data <- qs_dat %>%
+    filter({{habitat}} == habitat) %>%
+    select(parameter, sub_parameter, q_low, q_high, mean, n_tot, n_q_low, n_q_high) %>%
+    mutate(`%_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
+    rename("sub_param" = "sub_parameter") %>%
     arrange(parameter)
 } else {
   table_data <- qs_dat %>%
@@ -187,6 +196,24 @@ cat("\n\n")
 \%_*flagged*: Proportion of total records in the DDI export for the parameter which have been flagged as above q_high, or below q_low.  
 
 
+```{r combined SAV 2}
+
+flagged_combined_df <- flagged_combined_df %>%
+  mutate(
+    ParameterName = ifelse(
+      habitat == "Submerged Aquatic Vegetation" & ParameterName %in% c("Percent Occurrence", "Percent Cover"),
+      ifelse(
+        CommonIdentifier %in% c("Total seagrass", "Total_SAV"),
+        paste0(ParameterName, " - Total"),
+        paste0(ParameterName, " - Species")
+      ),
+      ParameterName
+    )
+  )
+
+```
+
+
 ```{r, quantile_table_display function, eval=TRUE}
 
 quantile_table_display <- function(quantile) {
@@ -219,8 +246,19 @@ quantile_table_display <- function(quantile) {
       q_value_table <- q_par_values %>%
         select(-ProgramName)
       
-      low_thres <- qs_dat %>% filter(parameter==p) %>% pull(q_low)
-      high_thres <- qs_dat %>% filter(parameter==p) %>% pull(q_high)
+      if(habitat == "Submerged Aquatic Vegetation" & p %in% c("Percent Occurrence - Total", "Percent Cover - Total")){
+        s <- str_split(p, " - Total")[[1]][1]
+        low_thres <- qs_dat %>% filter(parameter==s, sub_parameter=="Total") %>% pull(q_low)
+        high_thres <- qs_dat %>% filter(parameter==s, sub_parameter=="Total") %>% pull(q_high)
+        
+      } else if (habitat == "Submerged Aquatic Vegetation" & p %in% c("Percent Occurrence - Species", "Percent Cover - Species")){
+        s <- str_split(p, " - Species")[[1]][1]
+        low_thres <- qs_dat %>% filter(parameter==s, sub_parameter=="Species") %>% pull(q_low)
+        high_thres <- qs_dat %>% filter(parameter==s, sub_parameter=="Species") %>% pull(q_high)
+      } else {
+        low_thres <- qs_dat %>% filter(parameter==p) %>% pull(q_low)
+        high_thres <- qs_dat %>% filter(parameter==p) %>% pull(q_high)
+      }
       
       threshold <- ifelse(quantile == "low", low_thres, high_thres)
       
