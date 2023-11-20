@@ -1,0 +1,325 @@
+---
+date: "Last compiled on `r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: TRUE
+    toc_float: TRUE
+    toc_depth: 3
+    dev: png
+    keep_md: yes
+  word_document:
+    toc: TRUE
+    toc_depth: 3
+  pdf_document:
+    toc: TRUE
+    toc_depth: 3
+    dev: png
+    extra_dependencies: ["float"]
+    keep_md: yes
+urlcolor: blue
+title: '`r paste0(habitat," Indicator Quantile Report")`'
+subtitle: 'SEACAR Analysis'
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(
+   warning=FALSE,
+   message=FALSE,
+   echo=FALSE,
+   dpi=200
+)
+```
+
+
+
+```{r libraries, message=FALSE, echo=FALSE, warning=FALSE, include=FALSE}
+library(knitr)
+library(data.table)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(ggpubr)
+library(scales)
+library(EnvStats)
+library(tidyr)
+library(kableExtra)
+library(tidyverse)
+library(stringr)
+library(glue)
+```
+
+\newpage
+# Overview
+
+## Purpose
+
+
+The purpose of the indicator quantiles is to flag records that are "unusual" relative to all of the data in the DDI for a given indicator in order to facilitate QA/QC. 
+They are not used to filter any of the data for SEACAR analyses, and the presence of a LowerQuantile or UpperQuantile flag on a DDI record 
+alone does not necessarily indicate there is any issue with the record (neither does the absence of a LowerQuantile or UpperQuantile flag 
+necessarily mean that a data record is correct).
+
+
+## Relevant file locations
+
+Current values can be found in the "LowQuantile" and "HighQuantile" columns of the "Ref_Parameters" worksheet.
+
+The R script described below and the output file can be found in the 
+*FloridaSEACAR* *IndicatorQuantiles* repository on GitHub:  
+
+* [https://github.com/FloridaSEACAR/IndicatorQuantiles](https://github.com/FloridaSEACAR/IndicatorQuantiles)
+
+
+## Process steps  
+
+
+**IQ_Report_Render.R & IQ_Report.Rmd**  
+
+1.  The *IQ_Report_Render.R* script lists all files in a given directory and filters it to a list of DDI exports to 
+evaluate considering a list of parameters to skip (user-defined).  
+2.  User sets the desired upper and lower quantile thresholds, as well as a number of standard deviations away from the mean to use for the calculations.  
+3.  User sets the string value(s) in the DDI exports that should be considered as NA values.  
+4.  The remainder of the script loops through the file list, returning the values listed below and binding them together by row into a 
+single Excel spreadsheet that is saved to the User's working directory.  
+5.  For each habitat included in the User's working directory a PDF report will be created in the "output" folder using *IQ_Report.Rmd*,
+which provides an overview of questionable / flagged values.  
+6.  In addition to the PDF reports, each habitat will provide a .txt data output file in the "output/data" folder containing questionable values.
+
+
+\newpage
+# Summary
+
+The following quantile thresholds are used for flagging "questionable" values:
+
+* Lower quantile: **`r quant_low`**
+* Upper quantile: **`r quant_high`**
+
+
+Potential Included Parameters:
+```{r, results='asis'}
+cat("  \n\n")
+for(param in sort(params_list)){
+  if(param %in% parstoskip) next
+  cat(paste0("* ", param))
+  cat("\n")
+}
+```
+
+
+
+```{r file_name display, results='asis'}
+## display all file names for WC, or just one filename for others
+cat("  \n\n")
+if(habitat=="Water Column (Discrete)"){
+  cat("The data files used for the analysis:  \n\n")
+  for(file in short_files){
+    cat(paste0("* **", file,"**"))
+    cat("\n")
+  }
+} else {
+  cat(paste0("The data file used for the analysis: **",file_short,"**"))
+  cat("\n")
+}
+
+```
+
+
+```{r table overview, results='asis', eval=TRUE}
+options(knitr.kable.NA = "")
+if(habitat=="Water Column (Discrete)"){
+  qs_dat2 <- qs_dat %>%
+    mutate(parameter = if_else(
+      parameter == "Total Nitrogen",
+      paste0("Nitrogen ", "(", sub_parameter, ")"),
+      parameter
+    ))
+  table_data <- qs_dat2 %>%
+    filter({{habitat}} == habitat) %>%
+    select(parameter, sub_parameter, q_low, q_high, mean, n_tot, n_q_low, n_q_high) %>%
+    mutate(`%_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
+    rename("sub_param" = "sub_parameter") %>%
+    arrange(parameter)
+} else if(habitat == "Submerged Aquatic Vegetation"){
+  table_data <- qs_dat %>%
+    filter({{habitat}} == habitat) %>%
+    select(parameter, sub_parameter, q_low, q_high, mean, n_tot, n_q_low, n_q_high) %>%
+    mutate(`%_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
+    rename("sub_param" = "sub_parameter") %>%
+    arrange(parameter)
+} else {
+  table_data <- qs_dat %>%
+    filter({{habitat}} == habitat) %>%
+    select(parameter, q_low, q_high, mean, n_tot, n_q_low, n_q_high) %>%
+    mutate(`%_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
+    arrange(parameter)
+}
+
+table_display <- kable(table_data,
+      format="simple",
+      caption="Indicator Quantile Overview",
+      digits = 2) %>%
+  kable_styling(latex_options="scale_down",
+                position = "center")
+
+if (any(str_detect(table_data$parameter, "(?i)Grazers and reef dependent species"))) {
+  table_data$parameter <- str_replace(table_data$parameter,
+                                      "(?i) - Grazers and reef dependent species$",
+                                      " - *G&RDS*")
+  
+  table_display <- kable(table_data,
+      format="simple",
+      caption="Indicator Quantile Overview",
+      digits = 2) %>%
+  kable_styling(latex_options="scale_down",
+                position = "center") %>%
+    add_footnote("G&RDS: Grazers and reef dependent species  \n\n")
+}
+
+print(table_display)  
+
+cat("\n\n")
+
+```
+
+*q_low*: Value corresponding to the qval_low quantile for the parameter in the DDI export.  
+
+*q_high*: Value corresponding to the qval_high quantile for the parameter in the DDI export.  
+
+*mean*: Mean value for the parameter in the DDI export.  
+
+*n_tot*: Total number of records in the DDI export for the parameter.  
+
+*n_q_low*: Number of records in the DDI export that are below q_low for the parameter.  
+
+*n_q_high*: Number of records in the DDI export that are above q_high for the parameter.  
+
+\%_*flagged*: Proportion of total records in the DDI export for the parameter which have been flagged as above q_high, or below q_low.  
+
+
+```{r combined SAV 2}
+
+flagged_combined_df <- flagged_combined_df %>%
+  mutate(
+    ParameterName = ifelse(
+      habitat == "Submerged Aquatic Vegetation" & ParameterName %in% c("Percent Occurrence", "Percent Cover"),
+      ifelse(
+        CommonIdentifier %in% c("Total seagrass", "Total_SAV"),
+        paste0(ParameterName, " - Total"),
+        paste0(ParameterName, " - Species")
+      ),
+      ParameterName
+    )
+  )
+
+```
+
+
+```{r, quantile_table_display function, eval=TRUE}
+
+quantile_table_display <- function(quantile) {
+  q_values <- flagged_combined_df %>% filter(q_subset == quantile)
+
+  params <- unique(q_values$ParameterName)
+  
+  for (p in params) {
+    if(p %in% parstoskip) next
+
+    if (nrow(q_values %>% filter(ParameterName == p)) > 0) {
+      
+      subtitle <- glue("## {p}")
+      cat(subtitle, "\n\n")
+      
+      q_par_values <- q_values %>% 
+        filter(ParameterName == p) %>%
+        arrange(ProgramID, ProgramLocationID, SampleDate)
+      
+      if (habitat == "Coral Reef" | habitat == "Submerged Aquatic Vegetation" | habitat == "Water Column (Nekton)") {
+        q_par_values <- q_par_values %>%
+          select(RowID, ProgramID, ProgramName, ProgramLocationID, SampleDate, CommonIdentifier, ResultValue)
+      } else {
+        q_par_values <- q_par_values %>%
+          select(RowID, ProgramID, ProgramName, ProgramLocationID, SampleDate, ResultValue)
+      }
+      
+      flagged_program_id <- unique(q_par_values$ProgramID)
+    
+      q_value_table <- q_par_values %>%
+        select(-ProgramName)
+      
+      if(habitat == "Submerged Aquatic Vegetation" & p %in% c("Percent Occurrence - Total", "Percent Cover - Total")){
+        s <- str_split(p, " - Total")[[1]][1]
+        low_thres <- qs_dat %>% filter(parameter==s, sub_parameter=="Total") %>% pull(q_low)
+        high_thres <- qs_dat %>% filter(parameter==s, sub_parameter=="Total") %>% pull(q_high)
+        
+      } else if (habitat == "Submerged Aquatic Vegetation" & p %in% c("Percent Occurrence - Species", "Percent Cover - Species")){
+        s <- str_split(p, " - Species")[[1]][1]
+        low_thres <- qs_dat %>% filter(parameter==s, sub_parameter=="Species") %>% pull(q_low)
+        high_thres <- qs_dat %>% filter(parameter==s, sub_parameter=="Species") %>% pull(q_high)
+      } else {
+        low_thres <- qs_dat %>% filter(parameter==p) %>% pull(q_low)
+        high_thres <- qs_dat %>% filter(parameter==p) %>% pull(q_high)
+      }
+      
+      threshold <- ifelse(quantile == "low", low_thres, high_thres)
+      
+      # Print data table
+      q_data_table <- kable(q_value_table,
+                            format="simple",
+                            digits = 2,
+                            caption=paste0("Flagged Values - ", str_to_title(quantile), " Indicator Quantile: **", round(threshold,5),"**")) %>%
+        kable_styling(latex_options="scale_down",
+                      position = "center")
+      
+      print(q_data_table)
+      
+      # List programs with flagged data below, with their ID
+      cat("\n **Programs containing flagged data:** \n \n")
+      
+      for (p_id in flagged_program_id) {
+        p_name <- unlist(unique(q_par_values %>% filter(ProgramID == p_id) %>% select(ProgramName)))
+        cat(paste0("*",p_id,"*", " - ",p_name, "  \n"))
+      }
+      
+      cat("  \n")
+      cat("\\newpage")
+      
+    } else {
+      cat(paste0("There are no *", str_to_title(quantile) ,"* Quantile Flagged Values for ", p))
+    }
+  
+  }
+}
+
+```
+
+
+
+```{r low quantiles, results='asis', eval=TRUE}
+
+q_values <- flagged_combined_df %>% filter(q_subset == "low")
+if (nrow(q_values) > 0) {
+  cat("\\newpage")
+  cat("# Low Quantile")
+  cat("\n\n")
+  quantile_table_display("low")
+} else {
+  cat(paste0("There are no Low Quantile flagged data entries for ", habitat))
+}
+
+```
+
+
+
+```{r high quantiles, results='asis', eval=TRUE}
+
+q_values <- flagged_combined_df %>% filter(q_subset == "high")
+if (nrow(q_values) > 0) {
+  cat("\\newpage")
+  cat("# High Quantile")
+  cat("\n\n")
+  quantile_table_display("high")
+} else {
+  cat(paste0("There are no High Quantile flagged data entries for ", habitat))
+}
+
+```
