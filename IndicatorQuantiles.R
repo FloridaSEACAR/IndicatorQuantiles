@@ -3,8 +3,9 @@ library(data.table)
 library(doFuture)
 library(lubridate)
 library(stringr)
+library(openxlsx)
 options(scipen = 999)
-options(future.globals.maxSize = 6291456000)
+# options(future.globals.maxSize = 6291456000) #only necessary if using the parallel processing version of the script
 
 #Process new data export downloads if needed
 downloaddate <- as_date("2023-11-20")
@@ -83,29 +84,8 @@ qs <- data.table(habitat = character(),
                  n_sdn_high = integer(),
                  pid = integer(),
                  export = character())
-# 
-# qs2 <- data.table(habitat = character(),
-#                  tn = character(),
-#                  parameter = character(),
-#                  median = numeric(),
-#                  iqr = numeric(),
-#                  qval_low = numeric(),
-#                  qval_high = numeric(),
-#                  q_low = numeric(),
-#                  q_high = numeric(),
-#                  mean = numeric(),
-#                  sd = numeric(),
-#                  num_sds = integer(),
-#                  sdn_low = numeric(),
-#                  sdn_high = numeric(),
-#                  n_tot = integer(),
-#                  n_q_low = integer(),
-#                  n_q_high = integer(),
-#                  n_sdn_low = integer(),
-#                  n_sdn_high = integer(),
-#                  pid = integer(),
-#                  filename = character())
 
+#Build new quantiles summary data
 # qs <- foreach(file = seacardat_forit, .combine = rbind) %dofuture% {
 for(file in seacardat_forit){
   file_short <- str_sub(file, 61, -1)
@@ -363,7 +343,7 @@ for(file in seacardat_forit){
                                                                                                                           n_sdn_high = nrow(dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & ResultValue > dat[ParameterName == par & !is.na(ResultValue) & MADup == 1, mean(ResultValue) + (num_sds * sd(ResultValue))], ]))]
       
       dat_par[, `:=` (habitat = "Coral Reef",
-                      indicator = fcase(str_detect(par, "Percent|Tissue"), "Percent Cover", # Colony|Height|Diameter|Width|Length|
+                      indicator = fcase(str_detect(par, "Percent|Tissue|Diameter|Height|Width|Length"), "Percent Cover", # Colony|Height|Diameter|Width|Length|
                                         default = "Structural Community Composition"),
                       QuadSize_m2 = NA,
                       #SpeciesGroup1 = NA,
@@ -534,7 +514,7 @@ for(file in seacardat_forit){
     
     # dat <- fread(file, sep = "|", na.strings = nas)
     dat <- spec_dat
-    dat[.id == "sav", type := ifelse(CommonIdentifier %in% c("Total_SAV", "Total SAV", "Total seagrass"), "Total", "By species")]
+    dat[.id == "sav" & ParameterName != "Shoot Count", type := ifelse(CommonIdentifier %in% c("Total_SAV", "Total SAV", "Total seagrass"), "Total", "By species")]
     
     for(par in dat[.id == "sav", unique(ParameterName)]){
       if(par %in% parstoskip) next
@@ -613,13 +593,132 @@ setorder(qs2, habitat, indicator, parameter, type, QuadSize_m2)
 # fwrite(qs2, here::here(paste0("IndicatorQuantiles_", Sys.Date(), ".csv")))
 hs <- openxlsx::createStyle(textDecoration = "BOLD")
 openxlsx::write.xlsx(qs2, here::here(paste0("IndicatorQuantiles_", Sys.Date(), ".xlsx")), colNames = TRUE, headerStyle = hs, colWidths = "auto")
+openxlsx::write.xlsx(qs2, here::here(paste0("IndicatorQuantiles.xlsx")), colNames = TRUE, headerStyle = hs, colWidths = "auto")
 
 
-ref <- list.files(here::here(), pattern = "Ref_Parameters_Threshold")
+ref <- list.files(here::here(), pattern = "Ref_Parameters_Thresholds.xlsx")
 ref_info <- file.info(here::here(ref))
-print(paste0("Note: The supplied ref. file (", ref, ") was created ", ref_info$ctime, ". Proceed if you are sure this is the most up-to-date version."))
+print(paste0("Note: The supplied ref. file (", ref, ") was created ", ref_info$ctime, " and last modified ", ref_info$mtime, ". Proceed if you are sure this is the most up-to-date version."))
 
 refdat <- openxlsx::read.xlsx(here::here(ref), startRow = 4)
+setDT(refdat)
+refdat[, ActionNeededDate := as_date(ActionNeededDate, origin = "1899-12-30")]
+
+#crosswalk the ParameterNames
+qs2[, parameter2 := parameter]
+qs2[str_detect(parameter, "Composition|Grazer"), parameter2 := fcase(str_detect(parameter, "Dependent"), str_replace(parameter, " - Grazers and Reef Dependent Species", ""),
+                                                                     str_detect(parameter, "dependent"), str_replace(parameter, " - Grazers and reef dependent species", ""),
+                                                                     str_detect(parameter, "Composition"), str_replace(parameter, " - Species Composition", ""))]
+
+qs2[parameter2 %in% setdiff(sort(unique(qs2$parameter2)), sort(unique(refdat$ParameterName))), parameter2 := fcase(str_detect(parameter, "Tissue"), "Percent Live Tissue", 
+                                                                                                                   str_detect(parameter, "Ammonia"), "Ammonia, Un-ionized (NH3)",
+                                                                                                                   str_detect(parameter, "corrected"), "Chlorophyll a, Corrected for Pheophytin",
+                                                                                                                   str_detect(parameter, "uncorrected"), "Chlorophyll a, Uncorrected for Pheophytin",
+                                                                                                                   str_detect(parameter, "Colony"), "Density",
+                                                                                                                   str_detect(parameter, "Colored"), "Colored Dissolved Organic Matter",
+                                                                                                                   str_detect(parameter, "^Diameter"), "Colony Diameter",
+                                                                                                                   str_detect(parameter, "^Height"), "Colony Height",
+                                                                                                                   str_detect(parameter, "^Length"), "Colony Length",
+                                                                                                                   str_detect(parameter, "NH4"), "Ammonium, Filtered (NH4)",
+                                                                                                                   str_detect(parameter, "Nitrate"), "Nitrate (NO3)",
+                                                                                                                   str_detect(parameter, "Nitrite"), "Nitrite (NO2)",
+                                                                                                                   str_detect(parameter, "Nitrogen, organic"), "Nitrogen, Organic",
+                                                                                                                   str_detect(parameter, "NO2"), "NO2+3, Filtered",
+                                                                                                                   str_detect(parameter, "PO4"), "Phosphate, Filtered (PO4)",
+                                                                                                                   str_detect(parameter, "Presence"), "Presence/Absence",
+                                                                                                                   str_detect(parameter, "Kjeldahl"), "Total Kjeldahl Nitrogen",
+                                                                                                                   str_detect(parameter, "TSS"), "Total Suspended Solids")]
+qs2[habitat == "Coral Reef" & parameter == "Width", parameter2 := "Colony Width"]
+
+gitcommit <- system("git rev-parse HEAD", intern=TRUE)
+nchanges <- 0
+
+#Update the quantile values for any parameter for which they have changed since the previous version of the reference workbook
+for(r in seq(1, nrow(qs2))){
+  
+  if(str_detect(qs2[r, habitat], "Continuous")){
+    refrow <- refdat[HabitatName == str_sub(qs2[r, habitat], 1, str_locate(qs2[r, habitat], ". .Continuous.")[1]) & IndicatorName == paste0(qs2[r, indicator], " - Continuous") & ParameterName == qs2[r, parameter2], ]
+    rr_ind <- which(refdat$HabitatName == refrow$HabitatName & refdat$IndicatorName == refrow$IndicatorName & refdat$ParameterName == refrow$ParameterName)
+    
+  } else if(str_detect(qs2[r, habitat], "Discrete")){
+    if(is.na(qs2[r, type])){
+      refrow <- refdat[HabitatName == str_sub(qs2[r, habitat], 1, str_locate(qs2[r, habitat], ". .Discrete.")[1]) & IndicatorName == qs2[r, indicator] & ParameterName == qs2[r, parameter2], ]
+      rr_ind <- which(refdat$HabitatName == refrow$HabitatName & refdat$IndicatorName == refrow$IndicatorName & refdat$ParameterName == refrow$ParameterName)
+      
+    } else if(qs2[r, type] == "All"){
+      refrow <- refdat[HabitatName == str_sub(qs2[r, habitat], 1, str_locate(qs2[r, habitat], ". .Discrete.")[1]) & IndicatorName == qs2[r, indicator] & ParameterName == qs2[r, parameter2] & str_detect(Comments, "calculated"), ]
+      rr_ind <- which(refdat$HabitatName == refrow$HabitatName & refdat$IndicatorName == refrow$IndicatorName & refdat$ParameterName == refrow$ParameterName & str_detect(refdat$Comments, "calculated"))
+      
+    } else{
+      refrow <- refdat[HabitatName == str_sub(qs2[r, habitat], 1, str_locate(qs2[r, habitat], ". .Discrete.")[1]) & IndicatorName == qs2[r, indicator] & ParameterName == qs2[r, parameter2] & str_detect(Comments, "calculated", negate = TRUE), ]
+      rr_ind <- which(refdat$HabitatName == refrow$HabitatName & refdat$IndicatorName == refrow$IndicatorName & refdat$ParameterName == refrow$ParameterName & str_detect(refdat$Comments, "calculated", negate = TRUE))
+      
+    }
+    
+  } else if(str_detect(qs2[r, habitat], "Nekton")){
+    if(qs2[r, indicator] == "All Nekton"){
+      refrow <- refdat[str_detect(HabitatName, str_sub(qs2[r, habitat], 1, str_locate(qs2[r, habitat], ". .Nekton.")[1])) & IndicatorName == str_sub(qs2[r, indicator], str_locate(qs2[r, indicator], "All .")[2], -1) & ParameterName == qs2[r, parameter2], ]
+      rr_ind <- which(refdat$HabitatName == refrow$HabitatName & refdat$IndicatorName == refrow$IndicatorName & refdat$ParameterName == refrow$ParameterName)
+      
+    } else{
+      refrow <- refdat[str_detect(HabitatName, str_sub(qs2[r, habitat], 1, str_locate(qs2[r, habitat], ". .Nekton.")[1])) & IndicatorName == qs2[r, indicator] & ParameterName == qs2[r, parameter2], ]
+      rr_ind <- which(refdat$HabitatName == refrow$HabitatName & refdat$IndicatorName == refrow$IndicatorName & refdat$ParameterName == refrow$ParameterName)
+      
+    }
+    
+  } else if(qs2[r, indicator] == "Structural Community Composition"){
+    refrow <- refdat[str_detect(HabitatName, qs2[r, habitat]) & IndicatorName == str_sub(qs2[r, indicator], str_locate(qs2[r, indicator], "Structural C")[2], -1) & ParameterName == qs2[r, parameter2], ]
+    rr_ind <- which(refdat$HabitatName == refrow$HabitatName & refdat$IndicatorName == refrow$IndicatorName & refdat$ParameterName == refrow$ParameterName)
+    
+  } else if(!is.na(qs2[r, QuadSize_m2])){
+    refrow <- refdat[str_detect(HabitatName, qs2[r, habitat]) & IndicatorName == qs2[r, indicator] & ParameterName == qs2[r, parameter2] & QuadSize_m2 == qs2[r, QuadSize_m2], ]
+    rr_ind <- which(refdat$HabitatName == refrow$HabitatName & refdat$IndicatorName == refrow$IndicatorName & refdat$ParameterName == refrow$ParameterName & refdat$QuadSize_m2 == refrow$QuadSize_m2)
+    
+  } else if(!is.na(qs2[r, type])){
+    if(qs2[r, type] == "By species"){
+      refrow <- refdat[str_detect(HabitatName, qs2[r, habitat]) & IndicatorName == paste0(qs2[r, indicator], " (by species)") & ParameterName == qs2[r, parameter2], ]
+      rr_ind <- which(refdat$HabitatName == refrow$HabitatName & refdat$IndicatorName == refrow$IndicatorName & refdat$ParameterName == refrow$ParameterName)
+      
+    } else if(qs2[r, type] == "Total"){
+      refrow <- refdat[str_detect(HabitatName, qs2[r, habitat]) & IndicatorName == paste0(qs2[r, indicator], " (total)") & ParameterName == qs2[r, parameter2], ]
+      rr_ind <- which(refdat$HabitatName == refrow$HabitatName & refdat$IndicatorName == refrow$IndicatorName & refdat$ParameterName == refrow$ParameterName)
+      
+    }
+    
+  } else{
+    refrow <- refdat[str_detect(HabitatName, qs2[r, habitat]) & IndicatorName == qs2[r, indicator] & ParameterName == qs2[r, parameter2] & is.na(QuadSize_m2), ]
+    rr_ind <- which(refdat$HabitatName == refrow$HabitatName & refdat$IndicatorName == refrow$IndicatorName & refdat$ParameterName == refrow$ParameterName & is.na(refdat$QuadSize_m2))
+    
+  }
+  
+  if(length(rr_ind) > 1) stop("Something went wrong. Multiple reference table rows matched to the provided parameter info.")
+  if(length(rr_ind) == 0) stop("Something went wrong. Failed to find reference table row index.")
+  
+  if(refrow$LowQuantile != qs2[r, q_low]){
+    refdat[rr_ind, `:=` (LowQuantile = qs2[r, q_low], ActionNeeded = "U", ActionNeededDate = Sys.Date(), QuestionableSource = paste0("IndicatorQuantiles.xlsx, Git Commit ID: ", gitcommit))]
+    
+    nchanges <- nchanges + 1
+    
+  }
+  
+  if(refrow$HighQuantile != qs2[r, q_high]){
+    refdat[rr_ind, `:=` (HighQuantile = qs2[r, q_high], ActionNeeded = "U", ActionNeededDate = Sys.Date(), QuestionableSource = paste0("IndicatorQuantiles.xlsx, Git Commit ID: ", gitcommit))]
+    
+    nchanges <- nchanges + 1
+    
+  }
+  
+  cat("\r", r, " / ", nrow(qs2), " parameters checked. ", nchanges, " quantile values updated.")
+  
+}
+
+
+#Save updates to the reference sheet if necessary
+if(nchanges > 0){
+  wb <- loadWorkbook(here::here("Ref_Parameters_Thresholds_20231127.xlsx"))
+  writeData(wb, sheet = 1, refdat, startRow = 4)
+  saveWorkbook(wb, here::here("Ref_Parameters_Thresholds.xlsx"), overwrite = T)
+}
 
 
 
