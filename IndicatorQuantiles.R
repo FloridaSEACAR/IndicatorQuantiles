@@ -1155,6 +1155,7 @@ if(is.logical(all.equal(qs2[, -c("ActionNeeded", "ActionNeededDate", "QuantileSo
   writeData(wb, sheet = 1, refdat[, ..cols2], startRow = 3, startCol = 19)
   saveWorkbook(wb, here::here("output/ScriptResults/Database_Thresholds.xlsx"), overwrite = T)
   saveWorkbook(wb, here::here(paste0("output/ScriptResults/Database_Thresholds_", str_replace_all(Sys.Date(), "-", ""), ".xlsx")), overwrite = T)
+  Sys.sleep(5)
   
   #Commit new files to Git
   add(repo, here::here("output/ScriptResults/Database_Thresholds.xlsx"))
