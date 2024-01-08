@@ -6,24 +6,34 @@ library(stringr)
 library(openxlsx)
 library(git2r)
 options(scipen = 999)
+
+github_user = "srdurham"
+github_email = "stephen.durham@floridadep.gov"
+
+#Get current git commit and script path
+gitcommit <- system("git rev-parse HEAD", intern=TRUE)
+scriptpath <- rstudioapi::getSourceEditorContext()$path
+scriptname <- str_sub(scriptpath, max(str_locate_all(scriptpath, "/")[[1]]) + 1, -1)
+scriptversion <- paste0(scriptname, ", Git Commit ID: ", gitcommit)
+
 # options(future.globals.maxSize = 6291456000) #only necessary if using the parallel processing version of the script
 
-#Process new data export downloads if needed
-downloaddate <- as_date("2023-12-20")
-zips <- file.info(list.files("C:/Users/steph/Downloads/", full.names = TRUE, pattern="*.zip"))
-zips <- subset(zips, date(zips$mtime) == downloaddate)
-
-for(z in row.names(zips)){
-  unzip(z, exdir = here::here("SEACARdata"), junkpaths = TRUE)
-  
-  while(TRUE %in% str_detect(list.files(here::here("SEACARdata")), ".zip$")){
-    for(zz in list.files(here::here("SEACARdata"), full.names = TRUE, pattern = ".zip$")){
-      unzip(zz, exdir = here::here("SEACARdata"), junkpaths = TRUE)
-      file.remove(zz)
-    }
-  }
-  # file.remove(z)
-}
+# #Process new data export downloads if needed
+# downloaddate <- as_date("2023-12-20")
+# zips <- file.info(list.files("C:/Users/steph/Downloads/", full.names = TRUE, pattern="*.zip"))
+# zips <- subset(zips, date(zips$mtime) == downloaddate)
+# 
+# for(z in row.names(zips)){
+#   unzip(z, exdir = here::here("SEACARdata"), junkpaths = TRUE)
+#   
+#   while(TRUE %in% str_detect(list.files(here::here("SEACARdata")), ".zip$")){
+#     for(zz in list.files(here::here("SEACARdata"), full.names = TRUE, pattern = ".zip$")){
+#       unzip(zz, exdir = here::here("SEACARdata"), junkpaths = TRUE)
+#       file.remove(zz)
+#     }
+#   }
+#   # file.remove(z)
+# }
 
 #List data files
 seacardat <- list.files(here::here("SEACARdata"), full.names = TRUE, pattern = ".txt")
@@ -59,8 +69,8 @@ print(paste0("Note: The supplied ref. file (", reffilename, ") was created ", re
 
 refdat <- setDT(read.xlsx(reffilepath, sheet = 1, startRow = 3))
 refdat[, `:=` (ActionNeededDate = as_date(ActionNeededDate, origin = "1899-12-30"),
-               ScriptLatestRunVersion = as.character(ScriptLatestRunVersion),
-               ScriptLatestRunDate = as_date(ScriptLatestRunDate, origin = "1899-12-30"))]
+               ScriptLatestRunVersion = as.character(scriptversion),
+               ScriptLatestRunDate = Sys.Date())]
 
 #Load and combine the data exports that include species information 
 spec_dat <- lapply(speciesdat, function(x){
@@ -493,18 +503,18 @@ for(file in seacardat_forit){
                       # indicator = "Species Composition",
                       primaryHab = "Coastal Wetlands",
                       primaryCombTab = "CW",
-                      primaryIndID = ifelse(is_empty(parid), refdat[CombinedTable == "CW" & ParameterName == par, unique(IndicatorID)], dat[ParameterID == parid, unique(IndicatorID)]),
-                      primaryInd = ifelse(is_empty(parid), refdat[CombinedTable == "CW" & ParameterName == par, unique(IndicatorName)], dat[ParameterID == parid, unique(IndicatorName)]),
-                      primaryParID = ifelse(is_empty(parid), refdat[CombinedTable == "CW" & ParameterName == par, unique(ParameterID)], parid),
-                      primaryParNm = ifelse(is_empty(parid), refdat[CombinedTable == "CW" & ParameterName == par, unique(ParameterName)], dat[ParameterID == parid, unique(ParameterName)]),
-                      primaryThrID = ifelse(is_empty(parid), refdat[CombinedTable == "CW" & ParameterName == par, unique(ThresholdID)], dat[ParameterID == parid, unique(ThresholdID)]),
+                      primaryIndID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "CW" & ParameterName == par, unique(IndicatorID)], dat[ParameterID == parid, unique(IndicatorID)]),
+                      primaryInd = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "CW" & ParameterName == par, unique(IndicatorName)], dat[ParameterID == parid, unique(IndicatorName)]),
+                      primaryParID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "CW" & ParameterName == par, unique(ParameterID)], parid),
+                      primaryParNm = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "CW" & ParameterName == par, unique(ParameterName)], dat[ParameterID == parid, unique(ParameterName)]),
+                      primaryThrID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "CW" & ParameterName == par, unique(ThresholdID)], dat[ParameterID == parid, unique(ThresholdID)]),
                       QuadSize_m2 = NA,
                       #SpeciesGroup1 = NA,
                       pid = Sys.getpid())]
       
       qs_dat <- rbind(qs_dat, dat_par)
       
-      cat("\t", ifelse(is_empty(parid), refdat[CombinedTable == "CW" & ParameterName == par, unique(ParameterID)], parid), ": ", par, "\n", sep = "")
+      cat("\t", ifelse(purrr::is_empty(parid), refdat[CombinedTable == "CW" & ParameterName == par, unique(ParameterID)], parid), ": ", par, "\n", sep = "")
     }
     
     qs <- rbind(qs, qs_dat)
@@ -515,7 +525,7 @@ for(file in seacardat_forit){
 
   } else if(str_detect(file, "All_CORAL_Parameters")){
     
-    # #Only needed when coral exports were speparated by region
+    # #Only needed when coral exports were separated by region
     # coral_dat <- lapply(subset(seacardat, str_detect(seacardat, "Species Richness  - ")), function(x){
     #   assign(paste0("coral_", which(str_detect(subset(seacardat, str_detect(seacardat, "Species Richness  - ")), x))),
     #          fread(x))
@@ -575,18 +585,18 @@ for(file in seacardat_forit){
                       #                   default = "Structural Community Composition"),
                       primaryHab = "Coral/Coral Reef",
                       primaryCombTab = "Coral",
-                      primaryIndID = ifelse(is_empty(parid), refdat[CombinedTable == "Coral" & ParameterName == par, unique(IndicatorID)], dat[ParameterID == parid, unique(IndicatorID)]),
-                      primaryInd = ifelse(is_empty(parid), refdat[CombinedTable == "Coral" & ParameterName == par, unique(IndicatorName)], dat[ParameterID == parid, unique(IndicatorName)]),
-                      primaryParID = ifelse(is_empty(parid), refdat[CombinedTable == "Coral" & ParameterName == par, unique(ParameterID)], parid),
-                      primaryParNm = ifelse(is_empty(parid), refdat[CombinedTable == "Coral" & ParameterName == par, unique(ParameterName)], dat[ParameterID == parid, unique(ParameterName)]),
-                      primaryThrID = ifelse(is_empty(parid), refdat[CombinedTable == "Coral" & ParameterName == par, unique(ThresholdID)], dat[ParameterID == parid, unique(ThresholdID)]),
+                      primaryIndID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Coral" & ParameterName == par, unique(IndicatorID)], dat[ParameterID == parid, unique(IndicatorID)]),
+                      primaryInd = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Coral" & ParameterName == par, unique(IndicatorName)], dat[ParameterID == parid, unique(IndicatorName)]),
+                      primaryParID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Coral" & ParameterName == par, unique(ParameterID)], parid),
+                      primaryParNm = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Coral" & ParameterName == par, unique(ParameterName)], dat[ParameterID == parid, unique(ParameterName)]),
+                      primaryThrID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Coral" & ParameterName == par, unique(ThresholdID)], dat[ParameterID == parid, unique(ThresholdID)]),
                       QuadSize_m2 = NA,
                       #SpeciesGroup1 = NA,
                       pid = Sys.getpid())]
       
       qs_dat <- rbind(qs_dat, dat_par)
       
-      cat("\t", ifelse(is_empty(parid), refdat[CombinedTable == "Coral" & ParameterName == par, unique(ParameterID)], parid), ": ", par, "\n", sep = "")
+      cat("\t", ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Coral" & ParameterName == par, unique(ParameterID)], parid), ": ", par, "\n", sep = "")
     }
     
     qs <- rbind(qs, qs_dat)
@@ -645,18 +655,18 @@ for(file in seacardat_forit){
                       # indicator = "All Nekton",
                       primaryHab = "Water Column",
                       primaryCombTab = "Nekton",
-                      primaryIndID = ifelse(is_empty(parid), refdat[CombinedTable == "Nekton" & ParameterName == par, unique(IndicatorID)], dat[ParameterID == parid, unique(IndicatorID)]),
-                      primaryInd = ifelse(is_empty(parid), refdat[CombinedTable == "Nekton" & ParameterName == par, unique(IndicatorName)], dat[ParameterID == parid, unique(IndicatorName)]),
-                      primaryParID = ifelse(is_empty(parid), refdat[CombinedTable == "Nekton" & ParameterName == par, unique(ParameterID)], parid),
-                      primaryParNm = ifelse(is_empty(parid), refdat[CombinedTable == "Nekton" & ParameterName == par, unique(ParameterName)], dat[ParameterID == parid, unique(ParameterName)]),
-                      primaryThrID = ifelse(is_empty(parid), refdat[CombinedTable == "Nekton" & ParameterName == par, unique(ThresholdID)], dat[ParameterID == parid, unique(ThresholdID)]),
+                      primaryIndID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Nekton" & ParameterName == par, unique(IndicatorID)], dat[ParameterID == parid, unique(IndicatorID)]),
+                      primaryInd = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Nekton" & ParameterName == par, unique(IndicatorName)], dat[ParameterID == parid, unique(IndicatorName)]),
+                      primaryParID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Nekton" & ParameterName == par, unique(ParameterID)], parid),
+                      primaryParNm = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Nekton" & ParameterName == par, unique(ParameterName)], dat[ParameterID == parid, unique(ParameterName)]),
+                      primaryThrID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Nekton" & ParameterName == par, unique(ThresholdID)], dat[ParameterID == parid, unique(ThresholdID)]),
                       QuadSize_m2 = NA,
                       #SpeciesGroup1 = NA,
                       pid = Sys.getpid())]
       
       qs_dat <- rbind(qs_dat, dat_par)
       
-      cat("\t", ifelse(is_empty(parid), refdat[CombinedTable == "Nekton" & ParameterName == par, unique(ParameterID)], parid), ": ", par, "\n", sep = "")
+      cat("\t", ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Nekton" & ParameterName == par, unique(ParameterID)], parid), ": ", par, "\n", sep = "")
       
       parid <- dat[.id == "coral" & ParameterName == par & IndicatorName == "Grazers and Reef Dependent Species", unique(ParameterID)]
       
@@ -691,18 +701,18 @@ for(file in seacardat_forit){
                        # indicator = "Grazers and Reef Dependent Species",
                        primaryHab = "Coral/Coral Reef",
                        primaryCombTab = "Coral",
-                       primaryIndID = ifelse(is_empty(parid), refdat[CombinedTable == "Coral" & IndicatorName == "Grazers and Reef Dependent Species" & ParameterName == par, unique(IndicatorID)], dat[ParameterID == parid, unique(IndicatorID)]),
-                       primaryInd = ifelse(is_empty(parid), refdat[CombinedTable == "Coral" & IndicatorName == "Grazers and Reef Dependent Species" & ParameterName == par, unique(IndicatorName)], dat[ParameterID == parid, unique(IndicatorName)]),
-                       primaryParID = ifelse(is_empty(parid), refdat[CombinedTable == "Coral" & IndicatorName == "Grazers and Reef Dependent Species" & ParameterName == par, unique(ParameterID)], parid),
-                       primaryParNm = ifelse(is_empty(parid), refdat[CombinedTable == "Coral" & IndicatorName == "Grazers and Reef Dependent Species" & ParameterName == par, unique(ParameterName)], dat[ParameterID == parid, unique(ParameterName)]),
-                       primaryThrID = ifelse(is_empty(parid), refdat[CombinedTable == "Coral" & IndicatorName == "Grazers and Reef Dependent Species" & ParameterName == par, unique(ThresholdID)], dat[ParameterID == parid & IndicatorName == "Grazers and Reef Dependent Species", unique(ThresholdID)]),
+                       primaryIndID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Coral" & IndicatorName == "Grazers and Reef Dependent Species" & ParameterName == par, unique(IndicatorID)], dat[ParameterID == parid, unique(IndicatorID)]),
+                       primaryInd = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Coral" & IndicatorName == "Grazers and Reef Dependent Species" & ParameterName == par, unique(IndicatorName)], dat[ParameterID == parid, unique(IndicatorName)]),
+                       primaryParID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Coral" & IndicatorName == "Grazers and Reef Dependent Species" & ParameterName == par, unique(ParameterID)], parid),
+                       primaryParNm = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Coral" & IndicatorName == "Grazers and Reef Dependent Species" & ParameterName == par, unique(ParameterName)], dat[ParameterID == parid, unique(ParameterName)]),
+                       primaryThrID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Coral" & IndicatorName == "Grazers and Reef Dependent Species" & ParameterName == par, unique(ThresholdID)], dat[ParameterID == parid & IndicatorName == "Grazers and Reef Dependent Species", unique(ThresholdID)]),
                        QuadSize_m2 = NA,
                        #SpeciesGroup1 = NA,
                        pid = Sys.getpid())]
       
       qs_dat <- distinct(rbind(qs_dat, dat_par2))
       
-      cat("\t", ifelse(is_empty(parid), refdat[CombinedTable == "Coral" & IndicatorName == "Grazers and Reef Dependent Species" & ParameterName == par, unique(ParameterID)], parid), ": ", par, "\n", sep = "")
+      cat("\t", ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Coral" & IndicatorName == "Grazers and Reef Dependent Species" & ParameterName == par, unique(ParameterID)], parid), ": ", par, "\n", sep = "")
     }
     
     qs <- rbind(qs, qs_dat)
@@ -888,11 +898,11 @@ for(file in seacardat_forit){
         
         dat_par[, `:=` (primaryHab = "Submerged Aquatic Vegetation",
                         primaryCombTab = "SAV",
-                        primaryIndID = ifelse(is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par, unique(IndicatorID)], dat[ParameterID == parid, unique(IndicatorID)]),
-                        primaryInd = ifelse(is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par, unique(IndicatorName)], dat[ParameterID == parid, unique(IndicatorName)]),
-                        primaryParID = ifelse(is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par, unique(ParameterID)], parid),
-                        primaryParNm = ifelse(is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par, unique(ParameterName)], dat[ParameterID == parid, unique(ParameterName)]),
-                        primaryThrID = ifelse(is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par, unique(ThresholdID)], dat[ParameterID == parid, unique(ThresholdID)]),
+                        primaryIndID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par, unique(IndicatorID)], dat[ParameterID == parid, unique(IndicatorID)]),
+                        primaryInd = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par, unique(IndicatorName)], dat[ParameterID == parid, unique(IndicatorName)]),
+                        primaryParID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par, unique(ParameterID)], parid),
+                        primaryParNm = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par, unique(ParameterName)], dat[ParameterID == parid, unique(ParameterName)]),
+                        primaryThrID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par, unique(ThresholdID)], dat[ParameterID == parid, unique(ThresholdID)]),
                         QuadSize_m2 = NA,
                         #SpeciesGroup1 = NA,
                         pid = Sys.getpid())]
@@ -935,14 +945,14 @@ for(file in seacardat_forit){
                         #                   default = "Percent Cover"),
                         primaryHab = "Submerged Aquatic Vegetation",
                         primaryCombTab = "SAV",
-                        primaryIndID = ifelse(is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par & isSpeciesSpecific == isSpeciesSpec, unique(IndicatorID)], 
+                        primaryIndID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par & isSpeciesSpecific == isSpeciesSpec, unique(IndicatorID)], 
                                               dat[ParameterID == parid & isSpeciesSpecific == isSpeciesSpec, unique(IndicatorID)]),
-                        primaryInd = ifelse(is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par & isSpeciesSpecific == isSpeciesSpec, unique(IndicatorName)], 
+                        primaryInd = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par & isSpeciesSpecific == isSpeciesSpec, unique(IndicatorName)], 
                                             dat[ParameterID == parid & isSpeciesSpecific == isSpeciesSpec, unique(IndicatorName)]),
-                        primaryParID = ifelse(is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par & isSpeciesSpecific == isSpeciesSpec, unique(ParameterID)], parid),
-                        primaryParNm = ifelse(is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par & isSpeciesSpecific == isSpeciesSpec, unique(ParameterName)], 
+                        primaryParID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par & isSpeciesSpecific == isSpeciesSpec, unique(ParameterID)], parid),
+                        primaryParNm = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par & isSpeciesSpecific == isSpeciesSpec, unique(ParameterName)], 
                                               dat[ParameterID == parid & isSpeciesSpecific == isSpeciesSpec, unique(ParameterName)]),
-                        primaryThrID = ifelse(is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par & isSpeciesSpecific == isSpeciesSpec, unique(ThresholdID)], 
+                        primaryThrID = ifelse(purrr::is_empty(parid), refdat[CombinedTable == "SAV" & ParameterName == par & isSpeciesSpecific == isSpeciesSpec, unique(ThresholdID)], 
                                               dat[ParameterID == parid & isSpeciesSpecific == isSpeciesSpec, unique(ThresholdID)]),
                         QuadSize_m2 = NA,
                         #SpeciesGroup1 = NA,
@@ -951,7 +961,7 @@ for(file in seacardat_forit){
       }
       qs_dat <- rbind(qs_dat, dat_par)
       
-      cat("\t", ifelse(is_empty(parid), refdat[CombinedTable == "Coral" & ParameterName == par, unique(ParameterID)], parid), ": ", par, "\n", sep = "")
+      cat("\t", ifelse(purrr::is_empty(parid), refdat[CombinedTable == "Coral" & ParameterName == par, unique(ParameterID)], parid), ": ", par, "\n", sep = "")
       
     }
     
@@ -968,9 +978,6 @@ for(file in seacardat_forit){
 # qs2 <- rbindlist(qs)
 
 #Save the quantile results
-currentscriptname <- str_sub(rstudioapi::getSourceEditorContext()$path, max(str_locate_all(rstudioapi::getSourceEditorContext()$path, "/")[[1]]) + 1, -1)
-gitcommit <- system("git rev-parse HEAD", intern=TRUE)
-
 qs2 <- copy(qs)
 nums <- colnames(qs2[, .SD, .SDcols = is.numeric])
 for(n in nums){
@@ -981,14 +988,15 @@ for(n in nums){
 qs2[, `:=` (ScriptLatestRunVersion = paste0(currentscriptname, ", Git Commit ID: ", gitcommit), ScriptLatestRunDate = Sys.Date())] #parameterName = as.character(parameterName), 
 
 ####SAVE DETAIL FILE HERE
-rawoutputname <- "Database_Thresholds_details_"
+rawoutputname <- "Database_Thresholds_details"
 rawoutputextension <- ".xlsx"
 hs <- openxlsx::createStyle(textDecoration = "BOLD")
-openxlsx::write.xlsx(qs2, here::here(paste0("output/ScriptResults/", rawoutputname, str_replace_all(Sys.Date(), "-", ""), rawoutputextension)), colNames = TRUE, headerStyle = hs, colWidths = "auto")
+openxlsx::write.xlsx(qs2, here::here(paste0("output/ScriptResults/", rawoutputname, "_", str_replace_all(Sys.Date(), "-", ""), rawoutputextension)), colNames = TRUE, headerStyle = hs, colWidths = "auto")
 openxlsx::write.xlsx(qs2, here::here(paste0("output/ScriptResults/", rawoutputname, rawoutputextension)), colNames = TRUE, headerStyle = hs, colWidths = "auto")
 
 repo <- repository(here::here())
-add(repo, here::here(paste0("output/ScriptResults/", rawoutputname, str_replace_all(Sys.Date(), "-", ""), rawoutputextension)))
+# config(repo, user.name = github_user, user.email = github_email)
+add(repo, here::here(paste0("output/ScriptResults/", rawoutputname, "_", str_replace_all(Sys.Date(), "-", ""), rawoutputextension)))
 add(repo, here::here(paste0("output/ScriptResults/", rawoutputname, rawoutputextension)))
 commit(repo, paste0("Updated detailed indicator quantile results."))
 
@@ -1168,7 +1176,7 @@ setkey(refdat, NULL)
 refdat[, `:=` (ScriptLatestRunVersion = paste0(currentscriptname, ", Git Commit ID: ", gitcommit), ScriptLatestRunDate = Sys.Date())]
 setorder(refdat, Habitat, IndicatorName, ParameterName, Calculated, isSpeciesSpecific, QuadSize_m2)
 
-if(all.equal(qs2, refdat)){
+if(is.logical(all.equal(qs2, refdat))){
   #Save updates to the reference sheet
   wb <- loadWorkbook(reffilepath)
   cols1 <- c(1:17)
@@ -1182,9 +1190,6 @@ if(all.equal(qs2, refdat)){
   add(repo, here::here("output/ScriptResults/Database_Thresholds.xlsx"))
   add(repo, here::here(paste0("output/ScriptResults/Database_Thresholds_", str_replace_all(Sys.Date(), "-", ""), ".xlsx")))
   commit(repo, paste0("Updated Database_Thresholds indicator quantile files."))
-  
-  #Push new files to GitHub
-  push(repo)
   
 } else{
   stop("The quantile updates have been completed, but one or more mismatches between the quantile results and reference data tables remain. \nPlease resolve them and re-run the script. \n'all.equal(qs2, refdat)' result: ", all.equal(qs2, refdat))
