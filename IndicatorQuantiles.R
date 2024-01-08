@@ -11,10 +11,10 @@ github_user = "srdurham"
 github_email = "stephen.durham@floridadep.gov"
 
 #Get current git commit and script path
-gitcommit <- system("git rev-parse HEAD", intern=TRUE)
+gitcommit_script <- system("git rev-list HEAD -1 IndicatorQuantiles.R", intern=TRUE) #NOTE: this command only looks within the current branch (assumes the user is already using 'main').
 scriptpath <- rstudioapi::getSourceEditorContext()$path
 scriptname <- str_sub(scriptpath, max(str_locate_all(scriptpath, "/")[[1]]) + 1, -1)
-scriptversion <- paste0(scriptname, ", Git Commit ID: ", gitcommit)
+scriptversion <- paste0(scriptname, ", Git Commit ID: ", gitcommit_script)
 
 # options(future.globals.maxSize = 6291456000) #only necessary if using the parallel processing version of the script
 
@@ -986,7 +986,7 @@ for(n in nums){
   qs2[, (n) := plyr::round_any(eval(as.name(n)), 0.001)]
 }
 
-qs2[, `:=` (ScriptLatestRunVersion = paste0(currentscriptname, ", Git Commit ID: ", gitcommit), ScriptLatestRunDate = Sys.Date())] #parameterName = as.character(parameterName), 
+qs2[, `:=` (ScriptLatestRunVersion = scriptversion, ScriptLatestRunDate = Sys.Date())] #parameterName = as.character(parameterName), 
 
 ####SAVE DETAIL FILE HERE
 rawoutputname <- "Database_Thresholds_details"
@@ -996,7 +996,7 @@ openxlsx::write.xlsx(qs2, here::here(paste0("output/ScriptResults/", rawoutputna
 openxlsx::write.xlsx(qs2, here::here(paste0("output/ScriptResults/", rawoutputname, rawoutputextension)), colNames = TRUE, headerStyle = hs, colWidths = "auto")
 
 repo <- repository(here::here())
-# config(repo, user.name = github_user, user.email = github_email)
+config(repo, user.name = github_user, user.email = github_email)
 add(repo, here::here(paste0("output/ScriptResults/", rawoutputname, "_", str_replace_all(Sys.Date(), "-", ""), rawoutputextension)))
 add(repo, here::here(paste0("output/ScriptResults/", rawoutputname, rawoutputextension)))
 commit(repo, paste0("Updated detailed indicator quantile results."))
@@ -1174,10 +1174,10 @@ for(t in sort(unique(qs2$ThresholdID))){
 setkey(qs2, NULL)
 setorder(qs2, Habitat, IndicatorName, ParameterName, Calculated, isSpeciesSpecific, QuadSize_m2)
 setkey(refdat, NULL)
-refdat[, `:=` (ScriptLatestRunVersion = paste0(currentscriptname, ", Git Commit ID: ", gitcommit), ScriptLatestRunDate = Sys.Date())]
+# refdat[, `:=` (ScriptLatestRunVersion = scriptversion, ScriptLatestRunDate = Sys.Date())]
 setorder(refdat, Habitat, IndicatorName, ParameterName, Calculated, isSpeciesSpecific, QuadSize_m2)
 
-if(is.logical(all.equal(qs2, refdat))){
+if(is.logical(all.equal(qs2[, -c("ActionNeeded", "ActionNeededDate", "QuantileSource")], refdat[, -c("ActionNeeded", "ActionNeededDate", "QuantileSource")]))){
   #Save updates to the reference sheet
   wb <- loadWorkbook(reffilepath)
   cols1 <- c(1:17)
