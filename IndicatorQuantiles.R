@@ -69,8 +69,9 @@ print(paste0("Note: The supplied ref. file (", reffilename, ") was created ", re
 
 refdat <- setDT(read.xlsx(reffilepath, sheet = 1, startRow = 3))
 refdat[, `:=` (ActionNeededDate = as_date(ActionNeededDate, origin = "1899-12-30"),
-               ScriptLatestRunVersion = as.character(scriptversion),
-               ScriptLatestRunDate = Sys.Date())]
+               ScriptLatestRunVersion = as.character(ScriptLatestRunVersion),
+               ScriptLatestRunDate = as_date(ScriptLatestRunDate, origin = "1899-12-30"))][, `:=` (ScriptLatestRunVersion = scriptversion,
+                                                                                                   ScriptLatestRunDate = Sys.Date())]
 
 #Load and combine the data exports that include species information 
 spec_dat <- lapply(speciesdat, function(x){
