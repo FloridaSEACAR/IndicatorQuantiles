@@ -21,14 +21,14 @@ library(openxlsx)
 library(git2r)
 options(scipen = 999) #prevent scientific notation in outputs
 
-# #Process new data export downloads if needed
-# downloaddate <- as_date("2023-12-20")
+#Process new data export downloads if needed
+# downloaddate <- as_date("2024-01-23")
 # zips <- file.info(list.files("C:/Users/steph/Downloads/", full.names = TRUE, pattern="*.zip"))
 # zips <- subset(zips, date(zips$mtime) == downloaddate)
 # 
 # for(z in row.names(zips)){
 #   unzip(z, exdir = here::here("SEACARdata"), junkpaths = TRUE)
-#   
+# 
 #   while(TRUE %in% str_detect(list.files(here::here("SEACARdata")), ".zip$")){
 #     for(zz in list.files(here::here("SEACARdata"), full.names = TRUE, pattern = ".zip$")){
 #       unzip(zz, exdir = here::here("SEACARdata"), junkpaths = TRUE)
