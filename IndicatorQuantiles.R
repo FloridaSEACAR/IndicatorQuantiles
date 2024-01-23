@@ -1084,6 +1084,7 @@ qs2 <- rbind(qs2, refdat[ThresholdID %in% setdiff(refdat$ThresholdID, qs2$Thresh
 setkey(qs2, NULL) #remove any key created when merging files by ThresholdID
 
 #Update any threshold or quantile values that equal zero to 0.000001 because flagging in the DDI is based on </>, not <=/>=
+refdat[LowThreshold == 0, LowThreshold := 0.000001]
 qs2[LowThreshold == 0, LowThreshold := 0.000001]
 qs2[LowQuantile == 0, LowQuantile := 0.000001]
 
