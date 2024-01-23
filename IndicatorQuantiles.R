@@ -88,7 +88,7 @@ refdat[, `:=` (ActionNeededDate = as_date(ActionNeededDate, origin = "1899-12-30
 # Load and combine the data exports that include species information------------------------------------ 
 spec_dat <- lapply(speciesdat, function(x){
                    assign("dt", fread(x, sep = "|", na.strings = nas))
-                   dt[, export := str_sub(x, 61, -1)]
+                   dt[, export := str_sub(x, max(str_locate_all(x, "/")[[1]][,2]) + 1, -1)]
             })
 
 spec_dat <- rbindlist(spec_dat, fill = TRUE, idcol = TRUE)
