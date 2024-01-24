@@ -170,7 +170,7 @@ pars <- data.table(file = character(),
 # Build new quantiles summary data----------------------------------------------------------------
 # qs <- foreach(file = seacardat_forit, .combine = rbind) %dofuture% { #uncomment for parallel use
 for(file in seacardat_forit){ #comment for parallel use
-  file_short <- str_sub(file, 61, -1)
+  file_short <- str_sub(file, max(str_locate_all(file, "/")[[1]][,2]) + 1, -1)
   qs_dat <- data.table(primaryHab = character(),
                        primaryCombTab = character(),
                        primaryIndID = integer(),
@@ -219,7 +219,7 @@ for(file in seacardat_forit){ #comment for parallel use
                fread(x, sep = "|", na.strings = nas))
         
         #record the export name in the data.table
-        eval(as.name(paste0("cont_", which(str_detect(subset(seacardat, str_detect(seacardat, "Combined_WQ_WC_NUT_cont_Dissolved_Oxygen_Saturation")), x)))))[, export := str_sub(x, 61, -1)]
+        eval(as.name(paste0("cont_", which(str_detect(subset(seacardat, str_detect(seacardat, "Combined_WQ_WC_NUT_cont_Dissolved_Oxygen_Saturation")), x)))))[, export := str_sub(x, max(str_locate_all(file, "/")[[1]][,2]) + 1, -1)]
       })
       
       #Keep track of the parameter and the export file it came from
@@ -236,7 +236,7 @@ for(file in seacardat_forit){ #comment for parallel use
         assign(paste0("cont_", which(str_detect(subset(seacardat_sub, str_detect(seacardat_sub, "Combined_WQ_WC_NUT_cont_")), x))),
                fread(x, sep = "|", na.strings = nas))
         
-        eval(as.name(paste0("cont_", which(str_detect(subset(seacardat_sub, str_detect(seacardat_sub, "Combined_WQ_WC_NUT_cont_")), x)))))[, export := str_sub(x, 61, -1)]
+        eval(as.name(paste0("cont_", which(str_detect(subset(seacardat_sub, str_detect(seacardat_sub, "Combined_WQ_WC_NUT_cont_")), x)))))[, export := str_sub(x, max(str_locate_all(file, "/")[[1]][,2]) + 1, -1)]
       })
       
       #Keep track of the parameter and the export file it came from
