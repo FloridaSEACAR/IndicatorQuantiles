@@ -30,24 +30,6 @@ knitr::opts_chunk$set(
 )
 ```
 
-
-
-```{r libraries, message=FALSE, echo=FALSE, warning=FALSE, include=TRUE}
-library(knitr)
-library(data.table)
-library(dplyr)
-library(lubridate)
-library(ggplot2)
-library(ggpubr)
-library(scales)
-library(EnvStats)
-library(tidyr)
-library(kableExtra)
-library(tidyverse)
-library(stringr)
-library(glue)
-```
-
 \newpage
 # Overview
 
@@ -117,6 +99,8 @@ if(h=="Water Column"){
       cat("  \n")
     }
   }
+  
+  
 } else {
   
   indicators <- names(data_directory[[h]])
@@ -154,6 +138,11 @@ if(h=="Water Column"){
       
       for(file in file_short_list[[type]][[indicator]]){
         cat("\n")
+        
+        if(type=="Continuous"){
+          file <- str_replace(file, "SW|SE|NW|NE", "*AllRegions*")[[1]]
+        }
+        
         cat(paste0("* ", file))
         cat("\n")
       }
@@ -169,6 +158,22 @@ if(h=="Water Column"){
 
 \newpage
 # Summary Tables
+
+*q_low*: Value corresponding to the qval_low quantile for the parameter in the DDI export.  
+
+*q_high*: Value corresponding to the qval_high quantile for the parameter in the DDI export.  
+
+*mean*: Mean value for the parameter in the DDI export.  
+
+*n_tot*: Total number of records in the DDI export for the parameter.  
+
+*n_q_low*: Number of records in the DDI export that are below q_low for the parameter.  
+
+*n_q_high*: Number of records in the DDI export that are above q_high for the parameter.  
+
+\%_*flagged*: Proportion of total records in the DDI export for the parameter which have been flagged as above q_high, or below q_low.  
+
+
 ```{r table overview, results='asis', eval=TRUE}
 
 options(knitr.kable.NA = "")
@@ -230,24 +235,9 @@ if(h=="Water Column"){
   }
 }
 
-
 cat("\n")
 
 ```
-
-*q_low*: Value corresponding to the qval_low quantile for the parameter in the DDI export.  
-
-*q_high*: Value corresponding to the qval_high quantile for the parameter in the DDI export.  
-
-*mean*: Mean value for the parameter in the DDI export.  
-
-*n_tot*: Total number of records in the DDI export for the parameter.  
-
-*n_q_low*: Number of records in the DDI export that are below q_low for the parameter.  
-
-*n_q_high*: Number of records in the DDI export that are above q_high for the parameter.  
-
-\%_*flagged*: Proportion of total records in the DDI export for the parameter which have been flagged as above q_high, or below q_low.  
 
 
 ```{r combined SAV 2, eval=FALSE}
@@ -276,13 +266,10 @@ quantile_table_display <- function(quantile, hab) {
     types <- names(data_directory[[hab]])
     
     for (type in types){
-      # List individual tables for each indicator
-      indicators <- names(data_directory[[hab]][[type]])
-      
-      for (i in indicators){
-        indicator_title <- glue("## Indicator: {i}")
+      if(type == "Nekton"){
+        i <- "Nekton"
         cat("\n\n")
-        cat(indicator_title, "\n\n")
+        cat(glue("## Indicator: Nekton"), "\n\n")
         
         # find parameters for each indicator
         parameters <- names(data_directory[[hab]][[type]][[i]])
@@ -335,7 +322,9 @@ quantile_table_display <- function(quantile, hab) {
               kable_styling(latex_options="scale_down",
                             position = "center")
             
-            print(q_data_table)
+            if(type=="Nekton"){
+              print(q_data_table)
+            }
             
             # List programs with flagged data below, with their ID
             cat("\n **Programs containing flagged data:** \n \n")
@@ -352,7 +341,7 @@ quantile_table_display <- function(quantile, hab) {
             cat(paste0("There are no *", str_to_title(quantile) ,"* Quantile Flagged Values for ", p))
             cat("  \n")
           }
-        }
+        } 
       }
     }
   } else {
@@ -440,29 +429,117 @@ quantile_table_display <- function(quantile, hab) {
 ```
 
 
-\newpage
-# Excluded Programs
-The following programs are excluded from viewing in the tables below:  
+```{r, WC_table display}
 
-```{r excluded_programs, results='asis'}
-
-cat("  \n")
-for (pid in exclude_programs){
-  cat(paste0("* *",pid,"*"))
-  cat("\n")
+wc_program_table <- function(hab, type, i, p){
+  # produce flagged data tables
+  q_values <- data_directory[[hab]][[type]][[i]][[p]]
+  
+  if (nrow(q_values) > 0) {
+    
+    subtitle <- glue("### {p}")
+    cat("\n\n")
+    cat(subtitle, "\n\n")
+    
+    program_table <- q_values %>%
+      dplyr::group_by(ProgramID, ProgramName) %>%
+      dplyr::summarise(n = n(),
+                       n_low = sum(q_subset=="low"),
+                       n_high = sum(q_subset=="high")) %>%
+      arrange(desc(n))
+    
+    # List of programs to show below table
+    programs <- as.data.table(program_table[ , c("ProgramID", "ProgramName")])
+    
+    # Low and high quantile values
+    low_thres <- water_column_summary_directory[[type]] %>% dplyr::filter(parameter==p) %>% dplyr::pull(q_low)
+    high_thres <- water_column_summary_directory[[type]] %>% dplyr::filter(parameter==p) %>% dplyr::pull(q_high)
+    
+    cat(paste0(
+      "*Quantile Thresholds*:  \n",
+      "High: ", round(high_thres,5), "\n",
+      "Low: ", round(low_thres,5), "\n"
+    ))
+    cat("  \n")
+    
+    # Print data table
+    program_kable <- kable(program_table %>% select(-ProgramName),
+                          format="simple",
+                          digits = 2,
+                          caption=paste0("Flagged data, overview by program for **", p,"**")) %>%
+      kable_styling(latex_options="scale_down",
+                    position = "center")
+    
+    print(program_kable)
+    
+    # List programs with flagged data below, with their ID
+    cat("\n **Programs containing flagged data:** \n \n")
+    
+    for (p_id in unique(programs$ProgramID)) {
+      p_name <- programs[ProgramID==p_id, ProgramName]
+      cat(paste0("*",p_id,"*", " - ",p_name, "  \n"))
+    }
+    
+    cat("  \n")
+  } else {
+    cat("  \n")
+    cat(paste0("There are no *", str_to_title(quantile) ,"* Quantile Flagged Values for ", p))
+    cat("  \n")
+  }
 }
-cat("  \n")
 
 ```
 
 
+\newpage
+
+```{r WC Formatting, results='asis'}
+
+if(h=="Water Column"){
+  for(type in names(data_directory[[h]])){
+    cat("\n\n")
+    cat("\\newpage")
+    cat(glue("# {type}"), "\n\n")
+    
+    # Discrete & Continuous display Program tables
+    if(!type=="Nekton"){
+      for(i in names(data_directory[[h]][[type]])){
+        
+        cat("\n\n")
+        cat(glue("## {type} - {i}"), "\n\n")
+        
+        for(p in names(data_directory[[h]][[type]][[i]])){
+          cat("\n\n")
+          wc_program_table(h, type, i, p)
+        }
+      }
+    } else {
+      # Nekton
+      cat("\\newpage")
+      cat("# Low Quantile")
+      cat("\n\n")
+      quantile_table_display("low", h)
+      
+      cat("\\newpage")
+      cat("# High Quantile")
+      cat("\n\n")
+      quantile_table_display("high", h)
+    }
+  }
+}
+
+
+```
+
 
 ```{r low quantiles, results='asis', eval=TRUE}
 
-cat("\\newpage")
-cat("# Low Quantile")
-cat("\n\n")
-quantile_table_display("low", h)
+if(!h=="Water Column"){
+  cat("\\newpage")
+  cat("# Low Quantile")
+  cat("\n\n")
+  quantile_table_display("low", h)
+}
 
 ```
 
@@ -470,9 +547,11 @@ quantile_table_display("low", h)
 
 ```{r high quantiles, results='asis', eval=TRUE}
 
-cat("\\newpage")
-cat("# High Quantile")
-cat("\n\n")
-quantile_table_display("high", h)
+if(!h=="Water Column"){
+  cat("\\newpage")
+  cat("# High Quantile")
+  cat("\n\n")
+  quantile_table_display("high", h)
+}
 
 ```

@@ -9,6 +9,20 @@ library(stringr)
 library(openxlsx)
 library(dplyr)
 library(tictoc)
+# Libraries for Rmd
+library(knitr)
+library(data.table)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(ggpubr)
+library(scales)
+library(EnvStats)
+library(tidyr)
+library(kableExtra)
+library(tidyverse)
+library(stringr)
+library(glue)
 
 # import "seacar_data_location" variable which points to data directory
 source("seacar_data_location.R")
@@ -77,7 +91,28 @@ species_group_filtering <- TRUE
 
 # Exclude these Programs (using ProgramID) from print-outs
 # exclude_programs <- c(5002, 103, 514)
-exclude_programs <- c(5002)
+exclude_programs <- c()
+
+# List to store flagged data for Habitat Water Column
+wq_flagged_data_list <- list()
+
+# Select which continuous parameters to include:
+all_params <- c(
+  "Dissolved Oxygen",
+  "Dissolved Oxygen Saturation",
+  "pH",
+  "Salinity",
+  "Turbidity",
+  "Water Temperature"
+)
+
+# Select which regions to include Continuous data for
+regions <- c(
+  "NE",
+  "NW",
+  "SE",
+  "SW"
+)
 
 for (h in habitats){
   
@@ -89,7 +124,70 @@ for (h in habitats){
     
     # Check if Nekton file is present, add to report
     if(length(nekton_file)>0){
-      # NEKTON
+      type_name <- "Nekton"
+      file <- nekton_file
+      
+      # Record shortened file name
+      file_short <- tail(str_split(file, "/")[[1]], 1)
+      file_short_list[[type_name]] <- file_short
+      
+      qs_dat <- table_template()
+      
+      data <- fread(file, sep='|')
+      data <- data[Include==1 & MADup==1 & !is.na(ResultValue), ]
+      
+      # Nekton Processing
+      for (p in unique(data$ParameterName)){
+        if(p %in% parstoskip){next}
+        
+        # Set indicator name for each parameter
+        i <- "Nekton"
+        
+        dat_par <- data[ParameterName==p & !is.na(ResultValue) & MADup == 1 & Include == 1, 
+                        .(parameter=p,
+                          indicator=i,
+                          habitat=h,
+                          q_low = quantile(ResultValue, probs = quant_low),
+                          q_high = quantile(ResultValue, probs = quant_high),
+                          mean = mean(ResultValue),
+                          n_tot = length(ResultValue))]
+        
+        # pull high and low quantiles for filtering
+        quant_low_value <- dat_par$q_low
+        quant_high_value <- dat_par$q_high
+        
+        # grab subset of data that falls below quantile limit
+        subset_low <- data[ParameterName==p & ResultValue < quant_low_value, ]
+        subset_low$q_subset <- "low"
+        
+        # grab subset of data that falls above quantile limit
+        subset_high <- data[ParameterName==p & ResultValue > quant_high_value, ]
+        subset_high$q_subset <- "high"
+        
+        # combine datasets for display in report
+        combined_subset <- bind_rows(subset_low, subset_high)
+        
+        # Append the combined data frame to the result list
+        wq_flagged_data_list[[type_name]][[i]][[p]] <- combined_subset
+        
+        # Add n_q_low and n_q_high to dat_par table
+        dat_par$n_q_low <- nrow(subset_low)
+        dat_par$n_q_high <- nrow(subset_high)
+        dat_par[ , c('sub_parameter', 'QuadSize_m2')] = ""
+        
+        qs_dat <- rbind(qs_dat, dat_par)
+        
+        print(paste0(p, " sequencing complete"))
+        
+      }
+      
+      # Record overall results
+      wq_qs <- rbind(wq_qs, qs_dat)
+      
+      # File into directory to display summaries for each Indicator
+      water_column_summary_directory[[type_name]] <- qs_dat
+      
+      print(paste0(file_short, " export done"))
     }
     
     # Check if WQ_Disc files are present, add to report
@@ -98,7 +196,6 @@ for (h in habitats){
       type_name <- "Discrete"
       
       qs_dat <- table_template()
-      wq_flagged_data_list <- list()
       
       # Discrete processing
       for (file in wq_disc_files){
@@ -240,7 +337,92 @@ for (h in habitats){
     
     # Check if WQ_Cont files are present, add to report
     if(length(wq_cont_files)>0){
-      # CONTINUOUS
+      # Continuous
+      type_name <- "Continuous"
+      
+      cont_dat <- table_template()
+      
+      for(p in all_params){
+        
+        print(paste0("Starting Continuous parameter: ", p))
+        
+        par_name <- str_replace_all(p," ","_")
+        
+        i <- ref_parameters[ParameterName==p, IndicatorName]
+        
+        data_combined <- list()
+        region_files <- list()
+        
+        for(region in regions){
+          # Pattern used to locate correct Parameter / Region combination
+          pattern <- paste0(par_name,"_",region)
+          
+          file <- str_subset(wq_cont_files, pattern)
+          file_short <- tail(str_split(file, "/")[[1]], 1)
+          
+          # record short file names for display in report
+          region_files <- c(region_files, file_short)
+          
+          # Read in data file
+          data <- fread(file, sep='|')
+          data <- data[Include==1 & MADup==1 & !is.na(ResultValue), ]
+          
+          # Water temperature temporary fix
+          if(p=="Water Temperature"){
+            data <- data[ResultValue<100, ]
+          }
+          
+          # Record region name as column "region"
+          data$region <- region
+          # Ensure ValueQualifier column is interpreted as numeric
+          data$ValueQualifier <- as.numeric(data$ValueQualifier)
+          
+          # combine regional data sets for a given parameter
+          data_combined <- bind_rows(data_combined, data)
+        }
+        
+        # Append file_short to include all file names for WQ
+        file_short_list[[type_name]][[i]][[p]] <- region_files
+        
+        dat_par <- data_combined[ParameterName==p,
+                                 .(parameter = p,
+                                   indicator = i,
+                                   habitat = h,
+                                   q_low = quantile(ResultValue, probs = quant_low),
+                                   q_high = quantile(ResultValue, probs = quant_high),
+                                   mean = mean(ResultValue),
+                                   n_tot = length(ResultValue))]
+        
+        # pull high and low quantiles for filtering
+        quant_low_value <- dat_par$q_low
+        quant_high_value <- dat_par$q_high
+        
+        # grab subset of data that falls below quantile limit
+        subset_low <- data_combined[ParameterName==p & ResultValue < quant_low_value, ]
+        subset_low$q_subset <- "low"
+        
+        # grab subset of data that falls above quantile limit
+        subset_high <- data_combined[ParameterName==p & ResultValue > quant_high_value, ]
+        subset_high$q_subset <- "high"
+        
+        # combine datasets for display in report
+        combined_subset <- bind_rows(subset_low, subset_high)
+        
+        # Append the flagged data to data directory
+        wq_flagged_data_list[[type_name]][[i]][[p]] <- combined_subset
+        
+        # Add n_q_low and n_q_high to dat_par table
+        dat_par$n_q_low <- nrow(subset_low)
+        dat_par$n_q_high <- nrow(subset_high)
+        
+        # Record results
+        cont_dat <- rbind(cont_dat, dat_par, fill=TRUE)
+        
+        print(paste0(p, " Continuous processing complete!"))
+        
+      }
+      
+      water_column_summary_directory[[type_name]] <- cont_dat
     }
     
     # Combine all flagged data outputs for each indicator into single directory
