@@ -273,8 +273,7 @@ if(h=="Water Column"){
       filter(habitat == h, indicator == ind) %>%
       select(select_columns) %>%
       mutate(`%_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
-      arrange(parameter) %>%
-      rename(Parameter = parameter)
+      arrange(parameter)
     
     table_display <- kable(table_data,
                            format=table_format,
@@ -622,5 +621,47 @@ if(!h=="Water Column"){
   cat("\n\n")
   quantile_table_display("high", h)
 }
+
+```
+
+```{r data flag check, results='asis'}
+
+check_flag <- function(h){
+  data_combined_subset <- data.table()
+  if(!h=="Water Column"){
+    for(i in names(flagged_data_list)){
+      data_combined_subset <- rbind(data_combined_subset, rbind.fill(flagged_data_list[[i]]), fill=TRUE)
+    }
+  }
+  
+  # Compute statistics grouped by ParameterName
+  flag_table <- data_combined_subset[,
+                                     .(n_high = sum(q_subset == "high"),
+                                       n_high_flagged = sum(q_subset=="high" & str_detect(SEACAR_QAQCFlagCode, "17Q")),
+                                       n_low = sum(q_subset == "low"),
+                                       n_low_flagged = sum(q_subset=="low" & str_detect(SEACAR_QAQCFlagCode, "16Q"))), 
+                                     by = ParameterName]
+  
+  flag_display_table <- kable(flag_table,
+                              format="simple",
+                              digits = 2,
+                              caption="QAQC Quantile Flag Check") %>%
+    kable_styling(latex_options="scale_down",
+                  position = "center")
+
+  print(flag_display_table)
+  
+}
+
+cat("# QAQC Quantile Flag Check")
+cat("  \n")
+cat(paste0("* n_high is the amount of data above the quantile value.   \n * n_high_flagged is the amount of data above the quantile value AND containing proper SEACARQAQCFlag of 17Q (ResultValue above quantile value)."))
+cat("  \n")
+cat(paste0("* n_low is the amount of data below the quantile value.   \n * n_low_flagged is the amount of data below the quantile value AND containing proper SEACARQAQCFlag of 16Q (ResultValue below quantile value)."))
+cat("  \n")
+cat("* If everything is in order, these values should be the same. Any discrepancies therein should be fastidiously noted.")
+cat("  \n")
+
+check_flag(h)
 
 ```

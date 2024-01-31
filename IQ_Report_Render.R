@@ -108,7 +108,7 @@ regions <- c(
 # list of habitats to generate reports for
 habitats <- unique(ref_parameters$Habitat)
 # subset for a given report
-# habitats <- habitats[3]
+habitats <- habitats[3]
 
 tic()
 for (h in habitats){
