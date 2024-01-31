@@ -7,7 +7,6 @@ library(doFuture)
 library(lubridate)
 library(stringr)
 library(openxlsx)
-library(dplyr)
 library(tictoc)
 # Libraries for Rmd
 library(knitr)
@@ -23,6 +22,7 @@ library(kableExtra)
 library(tidyverse)
 library(stringr)
 library(glue)
+library(dplyr)
 
 # import "seacar_data_location" variable which points to data directory
 source("seacar_data_location.R")
@@ -49,18 +49,14 @@ quant_high <- 0.999
 num_sds <- 3
 
 # any parameters to skip in report?
-parstoskip <- ""
+# Skip Nekton Standard Length
+parstoskip <- c("Standard Length")
 
 #What are the strings that need to be interpreted as NA values?
 nas <- c("NULL", "NA", "")
 
 ref_parameters <- fread("data/Ref_Parameters.csv")
 ref_parameters <- ref_parameters[IndicatorName!="Acreage", ]
-
-# list of habitats to generate reports for
-habitats <- unique(ref_parameters$Habitat)
-# coral subset
-habitats <- habitats[1]
 
 table_template <- function(){
   return(
@@ -76,22 +72,17 @@ table_template <- function(){
       n_q_low = integer(),
       n_q_high = integer(),
       QuadSize_m2 = integer()
-      )
+    )
   )
 }
 
-tic()
 # Empty frames/list to store results
 data_directory <- list()
 qs <- table_template()
 wq_qs <- table_template()
 
-# Filter by species group? To check Indicator/Parameter SG1 combos
+# Filter by species group? FOR CORAL ONLY - Indicator/Parameter SG1 combos
 species_group_filtering <- TRUE
-
-# Exclude these Programs (using ProgramID) from print-outs
-# exclude_programs <- c(5002, 103, 514)
-exclude_programs <- c()
 
 # List to store flagged data for Habitat Water Column
 wq_flagged_data_list <- list()
@@ -114,6 +105,12 @@ regions <- c(
   "SW"
 )
 
+# list of habitats to generate reports for
+habitats <- unique(ref_parameters$Habitat)
+# subset for a given report
+# habitats <- habitats[3]
+
+tic()
 for (h in habitats){
   
   if(h=="Water Column"){
@@ -121,6 +118,7 @@ for (h in habitats){
     # list to store shortened file names to display in report
     file_short_list <- list()
     water_column_summary_directory <- list()
+    program_counts <- data.table()
     
     # Check if Nekton file is present, add to report
     if(length(nekton_file)>0){
@@ -134,14 +132,23 @@ for (h in habitats){
       qs_dat <- table_template()
       
       data <- fread(file, sep='|')
-      data <- data[Include==1 & MADup==1 & !is.na(ResultValue), ]
+      data <- data[Include==1 & MADup==1 & !is.na(ResultValue) & 
+                     SpeciesGroup1 %in% c("Grazers and reef dependent species", "Reef Fish"), ]
+      
+      # Record data totals by parameter
+      p_count <- data %>%
+        dplyr::group_by(ProgramID, ParameterName) %>%
+        dplyr::summarise(n_tot = n(), .groups = "keep")
+      p_count$typeName <- type_name
+      
+      program_counts <- bind_rows(program_counts, p_count)
+      
+      # Set indicator name
+      i <- "Nekton"
       
       # Nekton Processing
       for (p in unique(data$ParameterName)){
         if(p %in% parstoskip){next}
-        
-        # Set indicator name for each parameter
-        i <- "Nekton"
         
         dat_par <- data[ParameterName==p & !is.na(ResultValue) & MADup == 1 & Include == 1, 
                         .(parameter=p,
@@ -214,7 +221,25 @@ for (h in habitats){
           
           # If parameter is "Total Nitrogen", calculate quantiles/SDs separately for "uncalculated" records
           if(p == "Total Nitrogen"){
-            dat_par_all <- data[ParameterName==p & !is.na(ResultValue) & MADup == 1 & Include == 1,
+            
+            # Record data totals by parameter (for both All & No Calc)
+            p_count_all <- data %>%
+              dplyr::group_by(ProgramID, ParameterName) %>%
+              dplyr::summarise(n_tot = n(), .groups = "keep")
+            p_count_all$ParameterName <- "Total Nitrogen (All)"
+            p_count_all$typeName <- type_name
+            
+            program_counts <- bind_rows(program_counts, p_count_all)
+            
+            p_count_nocalc <- data[str_detect(SEACAR_QAQCFlagCode, "1Q", negate = TRUE), ] %>%
+              dplyr::group_by(ProgramID, ParameterName) %>%
+              dplyr::summarise(n_tot = n(), .groups = "keep")
+            p_count_nocalc$ParameterName <- "Total Nitrogen (Measured)"
+            p_count_nocalc$typeName <- type_name
+            
+            program_counts <- bind_rows(program_counts, p_count_nocalc)
+            
+            dat_par_all <- data[ParameterName==p,
                                 .(parameter = p,
                                   indicator = i,
                                   habitat = h,
@@ -224,7 +249,7 @@ for (h in habitats){
                                   n_tot = length(ResultValue))]
             dat_par_all[, sub_parameter := "All"]
             
-            dat_par_nocalc <- data[ParameterName==p & !is.na(ResultValue) & MADup == 1 & Include == 1 & str_detect(SEACAR_QAQCFlagCode, "1Q", negate = TRUE),
+            dat_par_nocalc <- data[ParameterName==p & str_detect(SEACAR_QAQCFlagCode, "1Q", negate = TRUE),
                                    .(parameter = p,
                                      indicator = i,
                                      habitat = h,
@@ -282,6 +307,15 @@ for (h in habitats){
             }
             
           } else {
+            
+            # Record data totals by parameter
+            p_count <- data %>%
+              dplyr::group_by(ProgramID, ParameterName) %>%
+              dplyr::summarise(n_tot = n(), .groups = "keep")
+            p_count$typeName <- type_name
+            
+            program_counts <- bind_rows(program_counts, p_count)
+            
             dat_par <- data[ParameterName==p & !is.na(ResultValue) & MADup == 1 & Include == 1,
                             .(parameter = p,
                               indicator = i,
@@ -367,7 +401,7 @@ for (h in habitats){
           data <- fread(file, sep='|')
           data <- data[Include==1 & MADup==1 & !is.na(ResultValue), ]
           
-          # Water temperature temporary fix
+          # Water temperature temporary fix ## REMOVE AFTER Program5 999 ISSUE FIXED ##
           if(p=="Water Temperature"){
             data <- data[ResultValue<100, ]
           }
@@ -380,6 +414,14 @@ for (h in habitats){
           # combine regional data sets for a given parameter
           data_combined <- bind_rows(data_combined, data)
         }
+        
+        # Record data totals by parameter
+        p_count <- data_combined %>%
+          dplyr::group_by(ProgramID, ParameterName) %>%
+          dplyr::summarise(n_tot = n(), .groups = "keep")
+        p_count$typeName <- type_name
+        
+        program_counts <- bind_rows(program_counts, p_count)
         
         # Append file_short to include all file names for WQ
         file_short_list[[type_name]][[i]][[p]] <- region_files
@@ -437,6 +479,7 @@ for (h in habitats){
                       output_file = paste0(file_out, ".pdf"),
                       output_dir = "output",
                       clean = TRUE)
+    unlink(paste0("output/", file_out, ".md"))
     
   }
   
@@ -525,6 +568,7 @@ for (h in habitats){
                       output_file = paste0(file_out, ".pdf"),
                       output_dir = "output",
                       clean = TRUE)
+    unlink(paste0("output/", file_out, ".md"))
     
   }
   
@@ -629,8 +673,13 @@ for (h in habitats){
             combined_subset <- bind_rows(subset_low, subset_high)
             combined_subset$quad_size <- q
             
+            new_par_name <- paste0(p, " - (",q,")")
+            
+            # set parametername to include quadsize
+            combined_subset$ParameterName <- new_par_name
+            
             # Append data directory with included, excluded data
-            flagged_data_list[[i]][[p]] <- combined_subset
+            flagged_data_list[[i]][[new_par_name]] <- combined_subset
             
             # Add n_q_low and n_q_high to dat_par table
             dat_par[QuadSize_m2==q, `:=` (n_q_low = nrow(subset_low))]
@@ -660,6 +709,7 @@ for (h in habitats){
                       output_file = paste0(file_out, ".pdf"),
                       output_dir = "output",
                       clean = TRUE)
+    unlink(paste0("output/", file_out, ".md"))
     
   }
   
@@ -748,6 +798,7 @@ for (h in habitats){
                       output_file = paste0(file_out, ".pdf"),
                       output_dir = "output",
                       clean = TRUE)
+    unlink(paste0("output/", file_out, ".md"))
     
   }
   
@@ -870,6 +921,7 @@ for (h in habitats){
                       output_file = paste0(file_out, ".pdf"),
                       output_dir = "output",
                       clean = TRUE)
+    unlink(paste0("output/", file_out, ".md"))
   }
 }
 toc()
