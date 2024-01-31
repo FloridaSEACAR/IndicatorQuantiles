@@ -6,6 +6,7 @@
 #         stephen.durham@floridadep.gov
 #
 # Date:    01/08/2024
+# Updated: 01/23/2024
 
 
 # Setup------------------------------------------
@@ -20,14 +21,14 @@ library(openxlsx)
 library(git2r)
 options(scipen = 999) #prevent scientific notation in outputs
 
-# #Process new data export downloads if needed
-# downloaddate <- as_date("2023-12-20")
+#Process new data export downloads if needed
+# downloaddate <- as_date("2024-01-23")
 # zips <- file.info(list.files("C:/Users/steph/Downloads/", full.names = TRUE, pattern="*.zip"))
 # zips <- subset(zips, date(zips$mtime) == downloaddate)
 # 
 # for(z in row.names(zips)){
 #   unzip(z, exdir = here::here("SEACARdata"), junkpaths = TRUE)
-#   
+# 
 #   while(TRUE %in% str_detect(list.files(here::here("SEACARdata")), ".zip$")){
 #     for(zz in list.files(here::here("SEACARdata"), full.names = TRUE, pattern = ".zip$")){
 #       unzip(zz, exdir = here::here("SEACARdata"), junkpaths = TRUE)
@@ -87,7 +88,7 @@ refdat[, `:=` (ActionNeededDate = as_date(ActionNeededDate, origin = "1899-12-30
 # Load and combine the data exports that include species information------------------------------------ 
 spec_dat <- lapply(speciesdat, function(x){
                    assign("dt", fread(x, sep = "|", na.strings = nas))
-                   dt[, export := str_sub(x, 61, -1)]
+                   dt[, export := str_sub(x, max(str_locate_all(x, "/")[[1]][,2]) + 1, -1)]
             })
 
 spec_dat <- rbindlist(spec_dat, fill = TRUE, idcol = TRUE)
@@ -169,7 +170,7 @@ pars <- data.table(file = character(),
 # Build new quantiles summary data----------------------------------------------------------------
 # qs <- foreach(file = seacardat_forit, .combine = rbind) %dofuture% { #uncomment for parallel use
 for(file in seacardat_forit){ #comment for parallel use
-  file_short <- str_sub(file, 61, -1)
+  file_short <- str_sub(file, max(str_locate_all(file, "/")[[1]][,2]) + 1, -1)
   qs_dat <- data.table(primaryHab = character(),
                        primaryCombTab = character(),
                        primaryIndID = integer(),
@@ -218,7 +219,7 @@ for(file in seacardat_forit){ #comment for parallel use
                fread(x, sep = "|", na.strings = nas))
         
         #record the export name in the data.table
-        eval(as.name(paste0("cont_", which(str_detect(subset(seacardat, str_detect(seacardat, "Combined_WQ_WC_NUT_cont_Dissolved_Oxygen_Saturation")), x)))))[, export := str_sub(x, 61, -1)]
+        eval(as.name(paste0("cont_", which(str_detect(subset(seacardat, str_detect(seacardat, "Combined_WQ_WC_NUT_cont_Dissolved_Oxygen_Saturation")), x)))))[, export := str_sub(x, max(str_locate_all(file, "/")[[1]][,2]) + 1, -1)]
       })
       
       #Keep track of the parameter and the export file it came from
@@ -235,7 +236,7 @@ for(file in seacardat_forit){ #comment for parallel use
         assign(paste0("cont_", which(str_detect(subset(seacardat_sub, str_detect(seacardat_sub, "Combined_WQ_WC_NUT_cont_")), x))),
                fread(x, sep = "|", na.strings = nas))
         
-        eval(as.name(paste0("cont_", which(str_detect(subset(seacardat_sub, str_detect(seacardat_sub, "Combined_WQ_WC_NUT_cont_")), x)))))[, export := str_sub(x, 61, -1)]
+        eval(as.name(paste0("cont_", which(str_detect(subset(seacardat_sub, str_detect(seacardat_sub, "Combined_WQ_WC_NUT_cont_")), x)))))[, export := str_sub(x, max(str_locate_all(file, "/")[[1]][,2]) + 1, -1)]
       })
       
       #Keep track of the parameter and the export file it came from
@@ -1081,6 +1082,11 @@ qs2 <- qs2[, .(Calculated = calculated,
 qs2 <- merge(qs2, refdat[ThresholdID %in% unique(qs2$ThresholdID), .(ThresholdID, ActionNeeded, ActionNeededDate, AdditionalComments, Conversions, ExpectedValues, HighThreshold, LowThreshold, QuantileSource, Units)], by = "ThresholdID", all = TRUE)
 qs2 <- rbind(qs2, refdat[ThresholdID %in% setdiff(refdat$ThresholdID, qs2$ThresholdID), ])
 setkey(qs2, NULL) #remove any key created when merging files by ThresholdID
+
+#Update any threshold or quantile values that equal zero to -0.000001 so that legitimate zeros aren't flagged (flagging in the DDI is based on </>, not <=/>=)
+refdat[LowThreshold == 0, LowThreshold := -0.000001]
+qs2[LowThreshold == 0, LowThreshold := -0.000001]
+qs2[LowQuantile == 0, LowQuantile := -0.000001]
 
 #Update column and row ordering
 setcolorder(qs2, c("ThresholdID", "ParameterID", "Habitat", "IndicatorID", "IndicatorName", "CombinedTable", "ParameterName", "Units", "LowThreshold", "HighThreshold", "QuadSize_m2", 
