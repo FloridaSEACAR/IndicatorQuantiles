@@ -1,0 +1,64 @@
+﻿ParameterID,ParameterName,Units,IndicatorID,IndicatorName,Habitat
+1,Dissolved Oxygen,mg/L,7,Water Quality,Water Column
+2,Salinity,ppt,7,Water Quality,Water Column
+3,Water Temperature,Degrees C,7,Water Quality,Water Column
+4,pH,None,7,Water Quality,Water Column
+5,Dissolved Oxygen Saturation,%,7,Water Quality,Water Column
+6,Specific Conductivity,mS/cm,7,Water Quality,Water Column
+7,Turbidity,NTU,8,Water Clarity,Water Column
+8,"Total Suspended Solids, TSS",mg/L,8,Water Clarity,Water Column
+9,Chlorophyll a uncorrected for pheophytin,ug/L,8,Water Clarity,Water Column
+10,Chlorophyll a corrected for pheophytin,ug/L,8,Water Clarity,Water Column
+11,Secchi Depth,m,8,Water Clarity,Water Column
+12,Light Extinction Coefficient,m^-1,8,Water Clarity,Water Column
+13,"Colored dissolved organic matter, CDOM",PCU,8,Water Clarity,Water Column
+14,"Fluorescent dissolved organic matter, FDOM",QSE,8,Water Clarity,Water Column
+15,Total Nitrogen,mg/L,6,Nutrients,Water Column
+16,Total Kjeldahl Nitrogen TKN,mg/L,6,Nutrients,Water Column
+17,NO2+3 Filtered,mg/L,6,Nutrients,Water Column
+18,NH4 Filtered,mg/L,6,Nutrients,Water Column
+19,Total Phosphorus,mg/L,6,Nutrients,Water Column
+20,PO4 Filtered,mg/L,6,Nutrients,Water Column
+21,Braun Blanquet Score,Score,1,Percent Cover,Submerged Aquatic Vegetation
+22,Modified Braun Blanquet Score,Score,1,Percent Cover,Submerged Aquatic Vegetation
+24,Percent Cover,%,1,Percent Cover,Submerged Aquatic Vegetation
+25,Hectares,ha,2,Acreage,Submerged Aquatic Vegetation
+26,Density,#/m2,13,Density,Oyster/Oyster Reef
+27,Percent Live,%,15,Percent Live,Oyster/Oyster Reef
+28,Shell Height,mm,16,Size Class,Oyster/Oyster Reef
+31,Percent Cover,%,18,Species Compositon,Coastal Wetlands
+32,Stem Density,#/m2,18,Species Compositon,Coastal Wetlands
+35,Count,Count,9,Nekton,Water Column
+36,Presence/Absence,Y/N,9,Nekton,Water Column
+37,Hectares,ha,14,Acreage,Oyster/Oyster Reef
+38,Number of Oysters Counted - Total,Count,13,Density,Oyster/Oyster Reef
+39,Number of Oysters Counted - Live,Count,13,Density,Oyster/Oyster Reef
+40,Number of Oysters Counted - Dead,Count,13,Density,Oyster/Oyster Reef
+43,Percent Cover,%,12,Percent Cover,Coral/Coral Reef
+44,Colony Density,#/m2,10,Community Composition,Coral/Coral Reef
+45,Hectares,ha,33,Acreage,Coral/Coral Reef
+46,Count,Count,11,Grazers and Reef Dependent Species,Coral/Coral Reef
+47,Presence/Absence,Y/N,11,Grazers and Reef Dependent Species,Coral/Coral Reef
+48,Hectares,ha,17,Acreage,Coastal Wetlands
+49,Total/Canopy Percent Cover,%,18,Species Compositon,Coastal Wetlands
+51,Reef Height,mm,13,Density,Oyster/Oyster Reef
+52,Shoot Count,#,1,Percent Cover,Submerged Aquatic Vegetation
+56,Percent Live Tissue,%,12,Percent Cover,Coral/Coral Reef
+57,Colony Height,cm,12,Percent Cover,Coral/Coral Reef
+58,Colony Length,cm,12,Percent Cover,Coral/Coral Reef
+59,Colony Width,cm,12,Percent Cover,Coral/Coral Reef
+60,Colony Diameter,cm,12,Percent Cover,Coral/Coral Reef
+62,Fork Length,cm,9,Nekton,Water Column
+63,Snout to Anus,cm,9,Nekton,Water Column
+64,Standard Length,cm,9,Nekton,Water Column
+66,Total Length,cm,9,Nekton,Water Column
+67,Width,cm,9,Nekton,Water Column
+69,Presence/Absence,Y/N,1,Percent Cover,Submerged Aquatic Vegetation
+70,Percent Occurrence,%,1,Percent Cover,Submerged Aquatic Vegetation
+72,Ammonia- Un-ionized (NH3),mg/L,6,Nutrients,Water Column
+73,Nitrate (N),mg/L,6,Nutrients,Water Column
+75,Nitrite (N),mg/L,6,Nutrients,Water Column
+78,"Nitrogen, organic",mg/L,6,Nutrients,Water Column
+79,Count,Count,10,Community Composition,Coral/Coral Reef
+80,Presence/Absence,Y/N,10,Community Composition,Coral/Coral Reef
+81,Standard Length,cm,11,Grazers and Reef Dependent Species,Coral/Coral Reef
