@@ -22,6 +22,7 @@ library(kableExtra)
 library(tidyverse)
 library(stringr)
 library(glue)
+library(plyr)
 library(dplyr)
 
 # import "seacar_data_location" variable which points to data directory
@@ -108,7 +109,7 @@ regions <- c(
 # list of habitats to generate reports for
 habitats <- unique(ref_parameters$Habitat)
 # subset for a given report
-habitats <- habitats[3]
+# habitats <- habitats[1]
 
 tic()
 for (h in habitats){
@@ -257,13 +258,13 @@ for (h in habitats){
                                      q_high = quantile(ResultValue, probs = quant_high),
                                      mean = mean(ResultValue),
                                      n_tot = length(ResultValue))]
-            dat_par_nocalc[, sub_parameter := "No calc"]
+            dat_par_nocalc[, sub_parameter := "Measured"]
             
             dat_par <- rbind(dat_par_all, dat_par_nocalc)
             
             for (sub_param in unique(dat_par$sub_parameter)){
               
-              if(sub_param == "No calc"){
+              if(sub_param == "Measured"){
                 sub_data <- data[str_detect(SEACAR_QAQCFlagCode, "1Q", negate = TRUE), ]
               } else {
                 sub_data <- data
@@ -638,7 +639,7 @@ for (h in habitats){
           # Add n_q_low and n_q_high to dat_par table
           dat_par$n_q_low <- nrow(subset_low)
           dat_par$n_q_high <- nrow(subset_high)
-          dat_par$QuadSize_m2 <- "None"
+          dat_par$QuadSize_m2 <- ""
           
           # append to make long-form table
           qs_dat <- rbind(qs_dat, dat_par, fill=TRUE)
@@ -687,6 +688,8 @@ for (h in habitats){
           }
           
           dat_par[ , c('sub_parameter')] = ""
+          dat_par[ , `:=` (parameter = paste0(parameter, " - (", QuadSize_m2, ")"))]
+          
           # append to make long-form table
           qs_dat <- rbind(qs_dat, dat_par, fill=TRUE)
         }

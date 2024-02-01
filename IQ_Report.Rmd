@@ -239,8 +239,7 @@ if(h=="Water Column"){
         filter(habitat == h, indicator == ind) %>%
         select(parameter, q_low, q_high, mean, n_tot, n_q_low, n_q_high) %>%
         mutate(`%_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
-        arrange(parameter) %>%
-        rename(Parameter = parameter)
+        arrange(parameter)
     
       table_display <- kable(table_data,
                              format="simple",
@@ -257,13 +256,9 @@ if(h=="Water Column"){
   }
 } else {
   
-  if(h=="Oyster/Oyster Reef"){
-    select_columns <- c("parameter", "QuadSize_m2", "q_low", "q_high", "mean", "n_tot", "n_q_low", "n_q_high")
-    table_format <- "latex"
-  } else {
-    select_columns <- c("parameter", "q_low", "q_high", "mean", "n_tot", "n_q_low", "n_q_high")
-    table_format <- "simple"
-  }
+  # Latex format for longer oyster parameter names (quadsize included)
+  table_format <- ifelse(h=="Oyster/Oyster Reef", "latex", "simple")
+  select_columns <- c("parameter", "q_low", "q_high", "mean", "n_tot", "n_q_low", "n_q_high")
   
   for (ind in indicators){
     cat(paste0("*Indicator*: **",ind,"**"))
@@ -529,7 +524,7 @@ wc_program_table <- function(hab, type, i, p){
     cat("  \n")
     
     # Print data table
-    program_kable <- kable(program_data %>% select(-n_tot_all) %>% rename(n_Prog_data = n_tot),
+    program_kable <- kable(program_data %>% select(-n_tot_all),
                            format="simple",
                            digits = 5,
                            caption=paste0("Flagged data, overview by program for **", p,"**")) %>%
@@ -624,33 +619,98 @@ if(!h=="Water Column"){
 
 ```
 
+
+
 ```{r data flag check, results='asis'}
 
 check_flag <- function(h){
   data_combined_subset <- data.table()
   if(!h=="Water Column"){
     for(i in names(flagged_data_list)){
-      data_combined_subset <- rbind(data_combined_subset, rbind.fill(flagged_data_list[[i]]), fill=TRUE)
+      data_combined_subset <- rbind(data_combined_subset, plyr::rbind.fill(flagged_data_list[[i]]), fill=TRUE)
     }
+    
+    # Compute statistics grouped by ParameterName
+    flag_table <- data_combined_subset[,
+                                       .(n_high = sum(q_subset == "high"),
+                                         n_high_flagged = sum(q_subset=="high" & str_detect(SEACAR_QAQCFlagCode, "17Q")),
+                                         n_low = sum(q_subset == "low"),
+                                         n_low_flagged = sum(q_subset=="low" & str_detect(SEACAR_QAQCFlagCode, "16Q"))), 
+                                       by = ParameterName]
+    
+  } else {
+    for(type in names(data_directory[[h]])){
+      for(i in names(data_directory[[h]][[type]])){
+        data2 <- plyr::rbind.fill(data_directory[[h]][[type]][[i]])
+        data2$type_name <- type
+        data2$indicator <- i
+        
+        data_combined_subset <- rbind(data_combined_subset, data2, fill=TRUE)
+      }
+    }
+    
+    # Compute statistics grouped by ParameterName
+    flag_table <- data_combined_subset[, 
+                                       .(n_high = sum(q_subset == "high"),
+                                         n_high_flagged = sum(q_subset=="high" & str_detect(SEACAR_QAQCFlagCode, "17Q")),
+                                         n_low = sum(q_subset == "low"),
+                                         n_low_flagged = sum(q_subset=="low" & str_detect(SEACAR_QAQCFlagCode, "16Q")),
+                                         indicator = unique(indicator)), 
+                                       by = list(ParameterName, type_name)]
   }
   
-  # Compute statistics grouped by ParameterName
-  flag_table <- data_combined_subset[,
-                                     .(n_high = sum(q_subset == "high"),
-                                       n_high_flagged = sum(q_subset=="high" & str_detect(SEACAR_QAQCFlagCode, "17Q")),
-                                       n_low = sum(q_subset == "low"),
-                                       n_low_flagged = sum(q_subset=="low" & str_detect(SEACAR_QAQCFlagCode, "16Q"))), 
-                                     by = ParameterName]
+  # add signifier to any entry that doesn't have correct flag
+  # Color coding cells
+  flag_table <- flag_table %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(cell_color_low = ifelse(n_low == n_low_flagged, "black", "red"),
+                  cell_color_high = ifelse(n_high == n_high_flagged, "black", "red")) %>%
+    dplyr::mutate(n_low = cell_spec(n_low, color = cell_color_low),
+                  n_low_flagged = cell_spec(n_low_flagged, color = cell_color_low),
+                  n_high = cell_spec(n_high, color = cell_color_high),
+                  n_high_flagged = cell_spec(n_high_flagged, color = cell_color_high)) %>%
+    select(-c(cell_color_high, cell_color_low))
+  
+  names(flag_table) <- gsub("_", " ", names(flag_table))
+  
+  # produce table where quantile flags may not be correctly applied
+  different_codes <- data_combined_subset[
+    (q_subset=="high" & !str_detect(SEACAR_QAQCFlagCode, "17Q")) | 
+      (q_subset=="low" & !str_detect(SEACAR_QAQCFlagCode, "16Q")),
+    c("RowID","ProgramID","ParameterName","ResultValue","SEACAR_QAQCFlagCode","SEACAR_QAQC_Description","q_subset")]
   
   flag_display_table <- kable(flag_table,
-                              format="simple",
+                              format="latex",
                               digits = 2,
-                              caption="QAQC Quantile Flag Check") %>%
-    kable_styling(latex_options="scale_down",
+                              escape = F,
+                              booktabs=T) %>%
+    kable_styling(latex_options=c("scale_down", "HOLD_position"),
                   position = "center")
-
+  
   print(flag_display_table)
   
+  if(nrow(different_codes)>0){
+    cat("  \n")
+    cat("Entries where ResultValue is above or below quantile, but expected SEACAR_QAQCFlagCode is not being applied")
+    cat("  \n")
+    
+    code_display_table <- kable(different_codes %>% select(-SEACAR_QAQC_Description) %>% arrange(ProgramID),
+                                format="latex",
+                                digits = 4,
+                                caption="SEACAR QAQC Flag Code discrepancies",
+                                longtable = T,
+                                booktabs = T) %>%
+      kable_styling(latex_options=c("HOLD_position","repeat_header"),
+                    position = "center",
+                    font_size = 8)
+    
+    print(code_display_table)
+    cat("  \n")
+    for(desc in unique(different_codes$SEACAR_QAQC_Description)){
+      cat(paste0("* ",desc))
+      cat("  \n")
+    }
+  }
 }
 
 cat("# QAQC Quantile Flag Check")
@@ -662,6 +722,8 @@ cat("  \n")
 cat("* If everything is in order, these values should be the same. Any discrepancies therein should be fastidiously noted.")
 cat("  \n")
 
+
 check_flag(h)
+
 
 ```
