@@ -634,10 +634,8 @@ check_flag <- function(h){
     flag_table <- data_combined_subset[,
                                        .(n_high = sum(q_subset == "high"),
                                          n_high_flagged = sum(q_subset=="high" & str_detect(SEACAR_QAQCFlagCode, "17Q")),
-                                         n_high_flagged2 = sum(str_detect(SEACAR_QAQCFlagCode, "17Q")),
                                          n_low = sum(q_subset == "low"),
-                                         n_low_flagged = sum(q_subset=="low" & str_detect(SEACAR_QAQCFlagCode, "16Q")),
-                                         n_low_flagged2 = sum(str_detect(SEACAR_QAQCFlagCode, "16Q"))),
+                                         n_low_flagged = sum(q_subset=="low" & str_detect(SEACAR_QAQCFlagCode, "16Q"))),
                                        by = ParameterName]
     
   } else {
@@ -655,10 +653,8 @@ check_flag <- function(h){
     flag_table <- data_combined_subset[, 
                                        .(n_high = sum(q_subset == "high"),
                                          n_high_flagged = sum(q_subset=="high" & str_detect(SEACAR_QAQCFlagCode, "17Q")),
-                                         n_high_flagged2 = sum(str_detect(SEACAR_QAQCFlagCode, "17Q")),
                                          n_low = sum(q_subset == "low"),
                                          n_low_flagged = sum(q_subset=="low" & str_detect(SEACAR_QAQCFlagCode, "16Q")),
-                                         n_low_flagged2 = sum(str_detect(SEACAR_QAQCFlagCode, "16Q")),
                                          indicator = unique(indicator)), 
                                        by = list(ParameterName, type_name)]
   }
@@ -725,10 +721,6 @@ cat(paste0("* n_low is the amount of data below the quantile value.   \n * n_low
 cat("  \n")
 cat("* If everything is in order, these values should be the same. Any discrepancies therein should be fastidiously noted.")
 cat("  \n")
-
-cat("* n_low_flagged2 and n_high_flagged2 are the values flagged within the database as 16Q or 17Q, respectively; regardless of whether our script has them flagged")
-cat("  \n")
-
 
 check_flag(h)
 
