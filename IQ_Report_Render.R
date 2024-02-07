@@ -500,6 +500,7 @@ for (h in habitats){
     qs_dat <- table_template()
     
     flagged_data_list <- list()
+    expected_data <- data.table()
     
     for (i in indicators){
       
@@ -549,6 +550,13 @@ for (h in habitats){
         
         # append to make long-form table
         qs_dat <- rbind(qs_dat, dat_par)
+        
+        # Exploration of "Expected Values" SEACARFlag 15Q
+        # List of expected / accepted values for BB
+        bb_expected <- c(0,0.1,0.5,1,2,3,4,5)
+        if(p %in% c("Braun Blanquet Score", "Modified Braun Blanquet Score")){
+          expected_data <- rbind(expected_data, indicator_data[ParameterName==p & !ResultValue %in% bb_expected, ])
+        }
         
       }
     }

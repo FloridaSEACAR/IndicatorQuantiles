@@ -626,16 +626,18 @@ if(!h=="Water Column"){
 check_flag <- function(h){
   data_combined_subset <- data.table()
   if(!h=="Water Column"){
-    for(i in names(flagged_data_list)){
-      data_combined_subset <- rbind(data_combined_subset, plyr::rbind.fill(flagged_data_list[[i]]), fill=TRUE)
+    for(i in names(data_directory[[h]])){
+      data_combined_subset <- rbind(data_combined_subset, plyr::rbind.fill(data_directory[[h]][[i]]), fill=TRUE)
     }
     
     # Compute statistics grouped by ParameterName
     flag_table <- data_combined_subset[,
                                        .(n_high = sum(q_subset == "high"),
                                          n_high_flagged = sum(q_subset=="high" & str_detect(SEACAR_QAQCFlagCode, "17Q")),
+                                         n_high_flagged2 = sum(str_detect(SEACAR_QAQCFlagCode, "17Q")),
                                          n_low = sum(q_subset == "low"),
-                                         n_low_flagged = sum(q_subset=="low" & str_detect(SEACAR_QAQCFlagCode, "16Q"))), 
+                                         n_low_flagged = sum(q_subset=="low" & str_detect(SEACAR_QAQCFlagCode, "16Q")),
+                                         n_low_flagged2 = sum(str_detect(SEACAR_QAQCFlagCode, "16Q"))),
                                        by = ParameterName]
     
   } else {
@@ -653,8 +655,10 @@ check_flag <- function(h){
     flag_table <- data_combined_subset[, 
                                        .(n_high = sum(q_subset == "high"),
                                          n_high_flagged = sum(q_subset=="high" & str_detect(SEACAR_QAQCFlagCode, "17Q")),
+                                         n_high_flagged2 = sum(str_detect(SEACAR_QAQCFlagCode, "17Q")),
                                          n_low = sum(q_subset == "low"),
                                          n_low_flagged = sum(q_subset=="low" & str_detect(SEACAR_QAQCFlagCode, "16Q")),
+                                         n_low_flagged2 = sum(str_detect(SEACAR_QAQCFlagCode, "16Q")),
                                          indicator = unique(indicator)), 
                                        by = list(ParameterName, type_name)]
   }
@@ -722,8 +726,73 @@ cat("  \n")
 cat("* If everything is in order, these values should be the same. Any discrepancies therein should be fastidiously noted.")
 cat("  \n")
 
+cat("* n_low_flagged2 and n_high_flagged2 are the values flagged within the database as 16Q or 17Q, respectively; regardless of whether our script has them flagged")
+cat("  \n")
+
 
 check_flag(h)
 
+
+```
+
+
+
+```{r SAV-BB Expected Data Check, eval=TRUE, results='asis'}
+
+if(h=="Submerged Aquatic Vegetation"){
+  cat("\\newpage")
+  cat("# Expected Values Check")
+  cat("  \n")
+  cat("Attempts to uncover irregularities with regard to Braun Blanquet and Modified Braun Blanquet Scores. Highlights any values that are not 
+      *(0, 0.1, 0.5, 1, 2, 3, 4, 5)* and compares them with the intended SEACAR_QAQCFlagCode of **15Q** - *Unexpected Value: Outside expected 
+      parameter values*    \n")
+  cat("    \n")
+  cat("* *n* is the amount of entries containing unexpected values    \n")
+  cat("  \n")
+  cat("* *n flagged* is the amount of entries containing the intended SEACAR_QAQCFlagCode of **15Q**    \n")
+  cat("  \n")
+  
+  # Table of unexpected data sums, with flag sums
+  flag_table <- expected_data %>% 
+  dplyr::group_by(ParameterName) %>% 
+  dplyr::summarise(n = n(),
+                   n_flagged = sum(str_detect(SEACAR_QAQCFlagCode, "15Q")))
+  
+  # Apply color if the 2 sums differ
+  color_flag_table <- flag_table %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(cell_color = ifelse(n == n_flagged, "black", "red")) %>%
+    dplyr::mutate(n = cell_spec(n, color=cell_color),
+                  n_flagged = cell_spec(n_flagged, color=cell_color)) %>%
+    select(-cell_color)
+  
+  names(color_flag_table) <- gsub("_", " ", names(color_flag_table))
+  
+  # Display table in report
+  flag_display_table <- kable(color_flag_table,
+                              format="latex",
+                              digits=2,
+                              escape=F,
+                              booktabs=T) %>%
+    kable_styling(latex_options="HOLD_position",position = "center")
+  
+  print(flag_display_table)
+    
+  for(p in unique(expected_data$ParameterName)){
+    cat(glue("## {p}"))
+    cat("  \n")
+    
+    results_overview <- expected_data %>% dplyr::filter(ParameterName==p) %>%
+      dplyr::group_by(ProgramID, ProgramName) %>%
+      dplyr::summarise("n data" = n())
+    
+    results_overview_kable <- kable(results_overview,format="latex",escape=F, booktabs=T) %>%
+      kable_styling(latex_options="HOLD_position", position="center")
+    
+    print(results_overview_kable)
+    cat("  \n")
+    
+  }
+}
 
 ```
