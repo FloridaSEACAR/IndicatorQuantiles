@@ -111,6 +111,14 @@ habitats <- unique(ref_parameters$Habitat)
 # subset for a given report
 # habitats <- habitats[1]
 
+# Exploration of "Expected Values"
+# List of expected / accepted values for BB
+bb_expected <- c(0,0.1,0.5,1,2,3,4,5)
+# Expected values for P/A
+pa_expected <- c(0,1)
+# Empty list to store "unexpected" data
+expected_data <- data.table()
+
 tic()
 for (h in habitats){
   
@@ -150,6 +158,17 @@ for (h in habitats){
       # Nekton Processing
       for (p in unique(data$ParameterName)){
         if(p %in% parstoskip){next}
+        # Exploration of "Expected Values" SEACARFlag 15Q
+        e_data <- data.table()
+        if(p %in% c("Presence/Absence")){
+          e_data <- data[ParameterName==p & !ResultValue %in% pa_expected, ]
+        }
+        
+        # Append data to expected data table if there is data
+        if(nrow(e_data)>0){
+          e_data$habitat <- h
+          expected_data <- rbind(expected_data, e_data, fill=TRUE)
+        }
         
         dat_par <- data[ParameterName==p & !is.na(ResultValue) & MADup == 1 & Include == 1, 
                         .(parameter=p,
@@ -500,7 +519,6 @@ for (h in habitats){
     qs_dat <- table_template()
     
     flagged_data_list <- list()
-    expected_data <- data.table()
     
     for (i in indicators){
       
@@ -552,10 +570,26 @@ for (h in habitats){
         qs_dat <- rbind(qs_dat, dat_par)
         
         # Exploration of "Expected Values" SEACARFlag 15Q
-        # List of expected / accepted values for BB
-        bb_expected <- c(0,0.1,0.5,1,2,3,4,5)
+        e_data <- data.table()
+        # BB and mBB
         if(p %in% c("Braun Blanquet Score", "Modified Braun Blanquet Score")){
-          expected_data <- rbind(expected_data, indicator_data[ParameterName==p & !ResultValue %in% bb_expected, ])
+          e_data <- indicator_data[ParameterName==p & !ResultValue %in% bb_expected, ]
+        }
+        
+        # Percent Cover and Percent Occurrence
+        if(p %in% c("Percent Cover","Percent Occurrence")){
+          e_data <- indicator_data[ParameterName==p & ResultValue < 0 & ResultValue > 100, ]
+        }
+        
+        # Presence / Absence
+        if(p %in% c("Presence/Absence")){
+          e_data <- indicator_data[ParameterName==p & !ResultValue %in% pa_expected, ]
+        }
+        
+        # Append data to expected data table if there is data
+        if(nrow(e_data)>0){
+          e_data$habitat <- h
+          expected_data <- rbind(expected_data, e_data, fill=TRUE)
         }
         
       }
@@ -790,6 +824,19 @@ for (h in habitats){
         # append to make long-form table
         qs_dat <- rbind(qs_dat, dat_par)
         
+        # Exploration of "Expected Values" SEACARFlag 15Q
+        e_data <- data.table()
+        # Percent Cover and Percent Occurrence
+        if(p %in% c("Percent Cover","Total/Canopy Percent Cover")){
+          e_data <- indicator_data[ParameterName==p & ResultValue < 0 & ResultValue > 100, ]
+        }
+        
+        # Append data to expected data table if there is data
+        if(nrow(e_data)>0){
+          e_data$habitat <- h
+          expected_data <- rbind(expected_data, e_data, fill=TRUE)
+        }
+        
       }
     }
     
@@ -913,6 +960,23 @@ for (h in habitats){
         # append to make long-form table
         qs_dat <- rbind(qs_dat, dat_par)
         
+        # Exploration of "Expected Values" SEACARFlag 15Q
+        e_data <- data.table()
+        # Percent Cover and Percent Occurrence
+        if(p %in% c("Percent Cover","Percent Live Tissue")){
+          e_data <- indicator_data[ParameterName==p & ResultValue < 0 & ResultValue > 100, ]
+        }
+        
+        # Presence / Absence
+        if(p %in% c("Presence/Absence")){
+          e_data <- indicator_data[ParameterName==p & !ResultValue %in% pa_expected, ]
+        }
+        
+        # Append data to expected data table if there is data
+        if(nrow(e_data)>0){
+          e_data$habitat <- h
+          expected_data <- rbind(expected_data, e_data, fill=TRUE)
+        }
       }
     }
     

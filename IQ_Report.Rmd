@@ -728,8 +728,118 @@ check_flag(h)
 ```
 
 
+```{r expected data check function}
 
-```{r SAV-BB Expected Data Check, eval=TRUE, results='asis'}
+expected_data_check <- function(h){
+  params <- expected_data[habitat==h, unique(ParameterName)]
+  
+  # dynamically include the correct text for each parameter
+  included_text <- function(param){
+    if(str_detect(param, "Braun")){
+      text_string <- "Expected values for **Braun Blanquet Score**: *(0, 0.1, 0.5, 1, 2, 3, 4, 5)*"
+    }
+    if(str_detect(param, "Modified Braun")){
+      text_string <- "Expected values for **Modified Braun Blanquet Score**: *(0, 0.1, 0.5, 1, 2, 3, 4, 5)*"
+    }
+    if(str_detect(param, "Percent")){
+      text_string <- "Expected **Percent Cover** and **Percent Occurrence** values: *0-100 (inclusive)*"
+    }
+    if(str_detect(param, "Presence")){
+      text_string <- "Expected **Presence/Absence** values: *0 or 1*"
+    }
+    return(cat(paste0("  \n" , text_string, "  \n")))
+  }
+  
+  for(p in params){
+    included_text(p)
+  }
+  
+  # Table of unexpected data sums, with flag sums
+  flag_table <- expected_data[habitat==h, ] %>% 
+    dplyr::group_by(ParameterName) %>% 
+    dplyr::summarise(n = n(),
+                     n_flagged = sum(str_detect(SEACAR_QAQCFlagCode, "15Q")))
+  
+  # Apply color if the 2 sums differ
+  color_flag_table <- flag_table %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(cell_color = ifelse(n == n_flagged, "black", "red")) %>%
+    dplyr::mutate(n = cell_spec(n, color=cell_color),
+                  n_flagged = cell_spec(n_flagged, color=cell_color)) %>%
+    select(-cell_color)
+  
+  names(color_flag_table) <- gsub("_", " ", names(color_flag_table))
+  
+  # Display table in report
+  flag_display_table <- kable(color_flag_table,
+                              format="latex",
+                              digits=2,
+                              escape=F,
+                              booktabs=T) %>%
+    kable_styling(latex_options="HOLD_position",position = "center")
+  
+  print(flag_display_table)
+  
+  cat("  \n")
+  
+  
+  for(p in params){
+    
+    cat(glue("## {p}"))
+    cat("  \n")
+    
+    results_overview <- expected_data[habitat==h, ] %>% 
+      dplyr::filter(ParameterName==p) %>%
+      dplyr::group_by(ProgramID, ProgramName) %>%
+      dplyr::summarise("n data" = n())
+    
+    results_overview_kable <- kable(results_overview,format="latex",escape=F, booktabs=T) %>%
+      kable_styling(latex_options="HOLD_position", position="center")
+    
+    print(results_overview_kable)
+    cat("  \n")
+    
+  }
+
+}
+
+```
+
+
+
+```{r expected data check, results='asis'}
+
+if(nrow(expected_data)>0){
+  if(nrow(expected_data[habitat==h, ])>0){
+    
+    cat("\\newpage")
+    cat("# Expected Values Check")
+    cat("  \n")
+    cat("Attempts to uncover any unexpected ResultValues. Highlights any values that are not expected and compares 
+    them with the intended SEACAR_QAQCFlagCode of **15Q** - *Unexpected Value: Outside expected parameter values*    \n")
+    cat("    \n")
+    cat("  \n")
+    cat("* *n* is the amount of entries containing unexpected values    \n")
+    cat("  \n")
+    cat("* *n flagged* is the amount of entries containing the intended SEACAR_QAQCFlagCode of **15Q**    \n")
+    cat("  \n")
+    cat("  \n")
+    
+    expected_data_check(h)
+    cat("  \n")
+  }
+} else {
+  cat("\\newpage")
+  cat("# Expected Values Check")
+  cat("  \n")
+  cat("Congratulations! There are *no* unexpected values in this dataset.    \n")
+}
+
+
+```
+
+
+```{r SAV-BB Expected Data Check, eval=FALSE, results='asis'}
 
 if(h=="Submerged Aquatic Vegetation"){
   cat("\\newpage")
@@ -746,9 +856,9 @@ if(h=="Submerged Aquatic Vegetation"){
   
   # Table of unexpected data sums, with flag sums
   flag_table <- expected_data %>% 
-  dplyr::group_by(ParameterName) %>% 
-  dplyr::summarise(n = n(),
-                   n_flagged = sum(str_detect(SEACAR_QAQCFlagCode, "15Q")))
+    dplyr::group_by(ParameterName) %>% 
+    dplyr::summarise(n = n(),
+                     n_flagged = sum(str_detect(SEACAR_QAQCFlagCode, "15Q")))
   
   # Apply color if the 2 sums differ
   color_flag_table <- flag_table %>%
