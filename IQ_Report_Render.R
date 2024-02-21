@@ -24,6 +24,7 @@ library(stringr)
 library(glue)
 library(plyr)
 library(dplyr)
+library(readxl)
 
 # import "seacar_data_location" variable which points to data directory
 source("seacar_data_location.R")
@@ -109,7 +110,7 @@ regions <- c(
 # list of habitats to generate reports for
 habitats <- unique(ref_parameters$Habitat)
 # subset for a given report
-# habitats <- habitats[1]
+habitats <- habitats[1]
 
 # Exploration of "Expected Values"
 # List of expected / accepted values for BB
@@ -376,6 +377,17 @@ for (h in habitats){
           
           # append to make long-form table
           qs_dat <- rbind(qs_dat, dat_par)
+          
+          # Record # of secchi VOB readings
+          if(p=="Secchi Depth"){
+            e_data <- data[ParameterName==p & ValueQualifier=="S", ]
+            
+            # Append data to expected data table if there is data
+            if(nrow(e_data)>0){
+              e_data$habitat <- h
+              expected_data <- rbind(expected_data, e_data, fill=TRUE)
+            }
+          }
         }
       }
       

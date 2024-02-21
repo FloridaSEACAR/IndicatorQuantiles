@@ -84,6 +84,20 @@ for(par in parstoskip){
 }
 ```
 
+The following Programs are managed by RCP and will be highlighted throughout the report:
+
+```{r highlight_rcp, results='asis'}
+# Function to change text color for RCP programs
+colorize <- function(x, color) {sprintf("\\textcolor{%s}{%s}", color, x)}
+
+# Intended to highlight programs managed by RCP
+# Skip=1 skips first row containing descriptor (SEACAR Program Matrix) 
+rcp_ma <- read_excel("data/SEACAR Program Matrix.xlsx", skip=1)
+rcp_id_list <- unique(rcp_ma$ID)
+cat(colorize(rcp_id_list, "blue"), sep=", ")
+
+
+```
 
 **Included Indicators and Parameters and the files used in this analysis:**
 
@@ -289,24 +303,6 @@ cat("\n")
 ```
 
 
-```{r combined SAV 2, eval=FALSE}
-
-flagged_combined_df <- flagged_combined_df %>%
-  mutate(
-    ParameterName = ifelse(
-      habitat == "Submerged Aquatic Vegetation" & ParameterName %in% c("Percent Occurrence", "Percent Cover"),
-      ifelse(
-        CommonIdentifier %in% c("Total seagrass", "Total_SAV"),
-        paste0(ParameterName, " - Total"),
-        paste0(ParameterName, " - Species")
-      ),
-      ParameterName
-    )
-  )
-
-```
-
-
 ```{r, quantile_table_display function, eval=TRUE}
 
 quantile_table_display <- function(quantile, hab) {
@@ -353,7 +349,11 @@ quantile_table_display <- function(quantile, hab) {
             flagged_program_id <- unique(q_par_values$ProgramID)
             
             q_value_table <- q_par_values %>%
+              mutate(rcp_cell_color = ifelse(ProgramID %in% rcp_id_list, "blue", "black")) %>%
               select(-ProgramName)
+            
+            q_value_table <- q_value_table %>%
+              mutate(ProgramID = cell_spec(ProgramID, color=rcp_cell_color))
             
             low_thres <- water_column_summary_directory[[type]][parameter==p, q_low]
             high_thres <- water_column_summary_directory[[type]][parameter==p, q_high]
@@ -361,7 +361,7 @@ quantile_table_display <- function(quantile, hab) {
             threshold <- ifelse(quantile == "low", low_thres, high_thres)
             
             # Print data table
-            q_data_table <- kable(q_value_table,
+            q_data_table <- kable(q_value_table %>% select(-rcp_cell_color),
                                   format="simple",
                                   digits = 2,
                                   caption=paste0("Flagged Values - ", str_to_title(quantile), " Indicator Quantile: **",
@@ -377,8 +377,11 @@ quantile_table_display <- function(quantile, hab) {
             cat("\n **Programs containing flagged data:** \n \n")
             
             for (p_id in flagged_program_id) {
+              
+              pid_display <- ifelse(p_id %in% rcp_id_list, colorize(p_id, "blue"), p_id)
+              
               p_name <- unlist(unique(q_par_values %>% filter(ProgramID == p_id) %>% select(ProgramName)))
-              cat(paste0("*",p_id,"*", " - ",p_name, "  \n"))
+              cat(paste0("*",pid_display,"*", " - ",p_name, "  \n"))
             }
             
             cat("  \n")
@@ -458,8 +461,11 @@ quantile_table_display <- function(quantile, hab) {
           cat("\n **Programs containing flagged data:** \n \n")
           
           for (p_id in flagged_program_id) {
+            
+            pid_display <- ifelse(p_id %in% rcp_id_list, colorize(p_id, "blue"), p_id)
+            
             p_name <- unlist(unique(q_par_values %>% filter(ProgramID == p_id) %>% select(ProgramName)))
-            cat(paste0("*",p_id,"*", " - ",p_name, "  \n"))
+            cat(paste0("*",pid_display,"*", " - ",p_name, "  \n"))
           }
           
           cat("  \n")
@@ -510,9 +516,17 @@ wc_program_table <- function(hab, type, i, p){
     # Merge program data counts & create percentage (Program & All per parameter)
     program_data <- merge(program_table, program_counts[ParameterName==p & typeName==type, ], by = "ProgramID")
     program_data <- program_data %>%
-      mutate(pct_prog = round(((n_flagged / n_tot)*100),5),
-             pct_all = round(((n_flagged / n_tot_all)*100),5)) %>%
+      mutate(pct_prog = round(((n_flagged / n_tot)*100),3),
+             pct_all = round(((n_flagged / n_tot_all)*100),3)) %>%
       select(ProgramID, n_flagged, n_low, n_high, n_tot, n_tot_all, pct_prog, pct_all)
+    
+    program_data <- program_data %>%
+      dplyr::rowwise() %>%
+      dplyr::mutate(cell_color = ifelse(pct_prog > 1, "orange", "black"),
+                    rcp_cell_color = ifelse(ProgramID %in% rcp_id_list, "blue", "black")) %>%
+      dplyr::mutate(pct_prog = cell_spec(pct_prog, color=cell_color),
+                    ProgramID = cell_spec(ProgramID, color=rcp_cell_color)) %>%
+      select(-c(cell_color, rcp_cell_color))
     
     cat(paste0(
       "Quantile Values:  \n",
@@ -526,9 +540,10 @@ wc_program_table <- function(hab, type, i, p){
     # Print data table
     program_kable <- kable(program_data %>% select(-n_tot_all),
                            format="simple",
-                           digits = 5,
+                           digits = 3,
+                           booktabs = T,
                            caption=paste0("Flagged data, overview by program for **", p,"**")) %>%
-      kable_styling(latex_options="scale_down",
+      kable_styling(latex_options=c("scale_down", "HOLD_position"),
                     position = "center")
     
     print(program_kable)
@@ -537,8 +552,9 @@ wc_program_table <- function(hab, type, i, p){
     cat("\n **Programs containing flagged data:** \n \n")
     
     for (p_id in unique(programs$ProgramID)) {
+      pid_display <- ifelse(p_id %in% rcp_id_list, colorize(p_id, "blue"), p_id)
       p_name <- programs[ProgramID==p_id, ProgramName]
-      cat(paste0("*",p_id,"*", " - ",p_name, "  \n"))
+      cat(paste0("*",pid_display,"*", " - ",p_name, "  \n"))
     }
     # Add space between each parameter listing
     cat("  \n")
@@ -747,18 +763,24 @@ expected_data_check <- function(h){
     if(str_detect(param, "Presence")){
       text_string <- "Expected **Presence/Absence** values: *0 or 1*"
     }
+    if(str_detect(param, "Secchi")){
+      text_string <- "Number of **Secchi Depth** readings with *SEACAR_QAQCFlagCode* of *8Q* (Original Value = 'ON BOTTOM'. Replaced with Total Depth)"
+    }
     return(cat(paste0("  \n" , text_string, "  \n")))
   }
   
   for(p in params){
     included_text(p)
+    # Secchi is checking for ValueQualifier, all else look at SEACAR_QAQCFlagCode
+    flag_var <- "SEACAR_QAQCFlagCode"
+    flag_val <- ifelse(str_detect(p, "Secchi"), "8Q", "15Q")
   }
   
   # Table of unexpected data sums, with flag sums
   flag_table <- expected_data[habitat==h, ] %>% 
     dplyr::group_by(ParameterName) %>% 
     dplyr::summarise(n = n(),
-                     n_flagged = sum(str_detect(SEACAR_QAQCFlagCode, "15Q")))
+                     n_flagged = sum(str_detect((!!as.name(flag_var)), flag_val)))
   
   # Apply color if the 2 sums differ
   color_flag_table <- flag_table %>%
@@ -816,12 +838,22 @@ if(nrow(expected_data)>0){
     cat("# Expected Values Check")
     cat("  \n")
     cat("Attempts to uncover any unexpected ResultValues. Highlights any values that are not expected and compares 
-    them with the intended SEACAR_QAQCFlagCode of **15Q** - *Unexpected Value: Outside expected parameter values*    \n")
+    them with the intended SEACAR_QAQCFlagCode of **15Q** - *Unexpected Value: Outside expected parameter values*
+    or ValueQualifier of **S** for Secchi Depth (visible on Bottom)  \n")
     cat("    \n")
     cat("  \n")
     cat("* *n* is the amount of entries containing unexpected values    \n")
     cat("  \n")
     cat("* *n flagged* is the amount of entries containing the intended SEACAR_QAQCFlagCode of **15Q**    \n")
+    cat("  \n")
+    cat("* The following Parameters are checked and their results will be listed below if there are any unexpected values:\n")
+    cat("  + Presence/Absence    \n")
+    cat("  + Secchi Depth Visible on Bottom    \n")
+    cat("  + Braun Blanquet    \n")
+    cat("  + Modified Braun Blanquet    \n")
+    cat("  + Percent Cover    \n")
+    cat("  + Percent Live Tissue    \n")
+    cat("  + Total/Canopy Percent Cover    \n")
     cat("  \n")
     cat("  \n")
     
