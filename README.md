@@ -26,3 +26,9 @@ single Excel spreadsheet that is saved to the User's working directory.
 5.  For each habitat included in the User's working directory a PDF report will be created in the "output" folder using *IQ_Report.Rmd*,
 which provides an overview of questionable / flagged values.  
 6.  In addition to the PDF reports, each habitat will provide a .txt data output file in the "output/data" folder containing questionable values.
+
+### Highlight RCP Programs functionality:
+1.  Head to [SEACAR DDI Program Matrix](https://data.florida-seacar.org/datadiscovery/programs/matrix) and type *RCP* into the search box
+2.  It should automatically filter to show only RCP-managed areas (currently *60* programs)
+3.  Click the *Excel* button beneath the seach box to export "**SEACAR Program Matrix.xlsx**"
+4.  Place this file into the *IndicatorQuantiles/data* folder for use in the script
