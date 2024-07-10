@@ -113,7 +113,7 @@ if(h=="Water Column"){
         
         if(type=="Nekton"){
           par_display <- paste0("* ", par)
-        } else if(type=="Discrete"){
+        } else if(type=="Discrete WQ"){
           
           if(str_detect(par, "Total Nitrogen")){
             par_display <- paste0("* ", par, "\n     * *", file_short_list[[type]][[ind]][["Total Nitrogen"]], "*")
@@ -183,7 +183,7 @@ if(h=="Water Column"){
         for(file in file_short_list[[type]][[indicator]]){
           cat("\n")
           
-          if(type=="Continuous"){
+          if(type=="Continuous WQ"){
             file <- str_replace(file, "SW|SE|NW|NE", "*AllRegions*")[[1]]
           }
           
@@ -216,7 +216,7 @@ if(h=="Water Column"){
 
 *n_q_high*: Number of records in the DDI export that are above q_high for the parameter.  
 
-\%_*flagged*: Proportion of total records in the DDI export for the parameter which have been flagged as above q_high, or below q_low.  
+*pct_flagged*: Proportion of total records in the DDI export for the parameter which have been flagged as above q_high, or below q_low.  
 
 
 ```{r table overview, results='asis', eval=TRUE}
@@ -236,11 +236,13 @@ if(h=="Water Column"){
       cat("\n\n")
     
       table_data <- water_column_summary_directory[[type]] %>%
-        filter(habitat == h, indicator == ind) %>%
-        select(parameter, q_low, q_high, mean, n_tot, n_q_low, n_q_high) %>%
-        mutate(`%_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
-        arrange(parameter)
-    
+        filter(Habitat == h, IndicatorName == ind) %>%
+        select(ParameterName, q_low, q_high, mean, n_tot, n_q_low, n_q_high) %>%
+        mutate(`pct_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
+        arrange(ParameterName)
+      
+      names(table_data) <- gsub("_"," ",names(table_data))
+      
       table_display <- kable(table_data,
                              format="simple",
                              caption="Indicator Quantile Overview",
@@ -257,18 +259,21 @@ if(h=="Water Column"){
 } else {
   
   # Latex format for longer oyster parameter names (quadsize included)
-  table_format <- ifelse(h=="Oyster/Oyster Reef", "latex", "simple")
-  select_columns <- c("parameter", "q_low", "q_high", "mean", "n_tot", "n_q_low", "n_q_high")
+  # table_format <- ifelse(h=="Oyster/Oyster Reef", "latex", "simple")
+  table_format <- "simple"
+  select_columns <- c("ParameterName", "q_low", "q_high", "mean", "n_tot", "n_q_low", "n_q_high")
   
   for (ind in indicators){
     cat(paste0("*Indicator*: **",ind,"**"))
     cat("\n\n")
     
     table_data <- qs_dat %>%
-      filter(habitat == h, indicator == ind) %>%
+      filter(Habitat == h, IndicatorName == ind) %>%
       select(select_columns) %>%
-      mutate(`%_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
-      arrange(parameter)
+      mutate(`pct_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
+      arrange(ParameterName)
+    
+    names(table_data) <- gsub("_"," ",names(table_data))
     
     table_display <- kable(table_data,
                            format=table_format,
@@ -278,7 +283,9 @@ if(h=="Water Column"){
       kable_styling(latex_options=c("scale_down","HOLD_position"),
                     position = "center")
     
-    print(table_display)  
+    if(nrow(table_data)>0){
+      print(table_display)  
+    }
     
     cat("\n\n")
   }
@@ -355,10 +362,12 @@ quantile_table_display <- function(quantile, hab) {
             q_value_table <- q_par_values %>%
               select(-ProgramName)
             
-            low_thres <- water_column_summary_directory[[type]][parameter==p, q_low]
-            high_thres <- water_column_summary_directory[[type]][parameter==p, q_high]
+            low_thres <- water_column_summary_directory[[type]][ParameterName==p, q_low]
+            high_thres <- water_column_summary_directory[[type]][ParameterName==p, q_high]
             
             threshold <- ifelse(quantile == "low", low_thres, high_thres)
+            
+            names(q_value_table) <- gsub("_"," ",names(q_value_table))
             
             # Print data table
             q_data_table <- kable(q_value_table,
@@ -438,10 +447,12 @@ quantile_table_display <- function(quantile, hab) {
           q_value_table <- q_par_values %>%
             select(-ProgramName)
           
-          low_thres <- qs_dat %>% dplyr::filter(parameter==p) %>% dplyr::pull(q_low)
-          high_thres <- qs_dat %>% dplyr::filter(parameter==p) %>% dplyr::pull(q_high)
+          low_thres <- qs_dat %>% dplyr::filter(ParameterName==p) %>% dplyr::pull(q_low)
+          high_thres <- qs_dat %>% dplyr::filter(ParameterName==p) %>% dplyr::pull(q_high)
           
           threshold <- ifelse(quantile == "low", low_thres, high_thres)
+          
+          names(q_value_table) <- gsub("_"," ",names(q_value_table))
           
           # Print data table
           q_data_table <- kable(q_value_table,
@@ -483,6 +494,10 @@ wc_program_table <- function(hab, type, i, p){
   # produce flagged data tables
   q_values <- data_directory[[hab]][[type]][[i]][[p]]
   
+  # Check for Total Nitrogen, include sub_param if so
+  p <- ifelse(str_detect(p, "Total Nitrogen"), "Total Nitrogen", p)
+  sub_param <- unique(q_values$sub_parameter)
+  
   data_summ <- water_column_summary_directory[[type]]
   
   if (nrow(q_values) > 0) {
@@ -500,12 +515,18 @@ wc_program_table <- function(hab, type, i, p){
     # List of programs to show below table
     programs <- as.data.table(program_table[ , c("ProgramID", "ProgramName")])
     
-    # Low and high quantile values
-    low_thres <- data_summ[parameter==p, q_low]
-    high_thres <- data_summ[parameter==p, q_high]
-    
-    # Total data count for display in program_table
-    program_table$n_tot_all <- data_summ[parameter==p, n_tot]
+    if(is.null(sub_param)){
+      # Total data count for display in program_table
+      program_table$n_tot_all <- data_summ[ParameterName==p, n_tot]
+      # Low and high quantile values
+      low_thres <- data_summ[ParameterName==p, q_low]
+      high_thres <- data_summ[ParameterName==p, q_high]
+    } else {
+      program_table$n_tot_all <- data_summ[sub_parameter==sub_param, n_tot]
+      # Low and high quantile values
+      low_thres <- data_summ[ParameterName==p & sub_parameter==sub_param, q_low]
+      high_thres <- data_summ[ParameterName==p & sub_parameter==sub_param, q_high]
+    }
     
     # Merge program data counts & create percentage (Program & All per parameter)
     program_data <- merge(program_table, program_counts[ParameterName==p & typeName==type, ], by = "ProgramID")
@@ -523,8 +544,10 @@ wc_program_table <- function(hab, type, i, p){
     ))
     cat("  \n")
     
+    names(program_data) <- gsub("_"," ",names(program_data))
+    
     # Print data table
-    program_kable <- kable(program_data %>% select(-n_tot_all),
+    program_kable <- kable(program_data %>% select(-"n tot all"),
                            format="simple",
                            digits = 5,
                            caption=paste0("Flagged data, overview by program for **", p,"**")) %>%
@@ -621,7 +644,7 @@ if(!h=="Water Column"){
 
 
 
-```{r data flag check, results='asis'}
+```{r data flag check, results='asis', eval=FALSE}
 
 check_flag <- function(h){
   data_combined_subset <- data.table()

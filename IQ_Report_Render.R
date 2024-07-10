@@ -27,7 +27,7 @@ library(dplyr)
 library(git2r)
 
 # Set to TRUE to render IQ Reports for each habitat
-render_reports <- FALSE
+render_reports <- TRUE
 
 # import "seacar_data_location" variable which points to data directory
 source("seacar_data_location.R")
@@ -60,15 +60,19 @@ parstoskip <- c("")
 nas <- c("NULL", "NA", "")
 # Now using SEACAR_Metadata (provided with Data exports) as Workbook template
 # Sheet "Ref_QAThresholds"
-reffilepath <- "data/SEACAR_Metadata.xlsx"
-ref_parameters <- setDT(read.xlsx(reffilepath, 
-                                  sheet = "Ref_QAThresholds", startRow = 7, sep.names = "_"))
+# reffilepath <- "data/SEACAR_Metadata.xlsx"
+# ref_parameters <- setDT(read.xlsx(reffilepath, 
+#                                   sheet = "Ref_QAThresholds", startRow = 7, sep.names = "_"))
+
+reffilepath <- "output/ScriptResults/Database_Thresholds.xlsx"
+ref_parameters <- setDT(read.xlsx(reffilepath, sheet = 1, startRow = 3))
 
 # Modify column names (replace "_" with "" while making exception for QuadSize_m2)
-modify_colnames <- function(colnames, exception) {
-  sapply(colnames, function(name) {if (name == exception) {return("QuadSize_m2")} else {return(gsub("_", "", name))}})}
+# modify_colnames <- function(colnames, exception) {
+#   sapply(colnames, function(name) {if (name == exception) {return("QuadSize_m2")} else {return(gsub("_", "", name))}})}
+# 
+# names(ref_parameters) <- modify_colnames(names(ref_parameters), "Quad_Size_m2")
 
-names(ref_parameters) <- modify_colnames(names(ref_parameters), "Quad_Size_m2")
 ref_parameters_original <- copy(ref_parameters)
 ref_parameters <- ref_parameters[IndicatorName!="Acreage", ]
 
@@ -139,7 +143,7 @@ regions <- c(
 # list of habitats to generate reports for
 habitats <- unique(ref_parameters$Habitat)
 # subset for a given report
-# habitats <- c( "Oyster/Oyster Reef","Submerged Aquatic Vegetation","Water Column")
+# habitats <- c("Submerged Aquatic Vegetation")
 
 # Loop through each habitat
 tic()
@@ -560,7 +564,7 @@ for (h in habitats){
                         output_file = paste0(file_out, ".pdf"),
                         output_dir = "output",
                         clean = TRUE)
-      unlink(paste0("output/", file_out, ".md"))      
+      unlink(paste0("output/", file_out, ".md"))
     }
   }
   
@@ -587,7 +591,7 @@ for (h in habitats){
       threshold_ids <- ref_parameters[Habitat==h & IndicatorName==i, unique(ThresholdID)]
       
       for(threshold_id in threshold_ids){
-        isSpeciesSpecific <- ref_parameters[ThresholdID==threshold_id, IsSpeciesSpecific]
+        isSpeciesSpecific <- ref_parameters[ThresholdID==threshold_id, isSpeciesSpecific]
         if(isSpeciesSpecific){
           sg1_include <- c("Seagrass","Total SAV")
         } else {
@@ -666,7 +670,7 @@ for (h in habitats){
   }
   
   if(h=="Oyster/Oyster Reef"){
-    file <- str_subset(seacardat, "All_Oyster")
+    file <- str_subset(seacardat, "All_OYSTER")
     
     # shortened filename for display in report
     file_short <- tail(str_split(file, "/")[[1]], 1)
@@ -1093,7 +1097,8 @@ for (h in habitats){
 toc()
 
 # Bind together all parameter results into single table
-summary_table <- bind_rows(bind_rows(water_column_summary_directory) %>% unique(), qs)
+summary_table <- bind_rows(bind_rows(water_column_summary_directory) %>% unique(), 
+                           qs %>% unique())
 
 # Dataframe to use within add_buffer function below
 # Adds a buffer of +/- 0.000001 to quantile values at high or low thresholds
@@ -1146,9 +1151,10 @@ qSourceText <- paste0(rawoutputname, rawoutputextension, ", Git Commit ID: ", gi
 
 # Test copy of original 
 test <- copy(ref_parameters_original)
-test$ActionNeeded <- as.character(test$ActionNeeded)
-test$ActionNeededDate <- as_date(results_df$ActionNeededDate, origin = "1899-12-30")
-test$ActionNeeded <- NA
+test$ActionNeededDate <- as_date(test$ActionNeededDate, origin = "1899-12-30")
+test$ScriptLatestRunDate <- as_date(test$ScriptLatestRunDate, origin = "1899-12-30")
+# test$ActionNeeded <- NA
+test[, `:=` (QuantileDate = ActionNeededDate)]
 
 # Create table to compare current vs. previous quantile results
 # Append "test" copy results, update where needed
@@ -1182,6 +1188,7 @@ for(t_id in unique(qs2$ThresholdID)){
   
   nameDifferent <- ifelse(og_param!=new_param, TRUE, FALSE)
   unitDifferent <- ifelse(is.na(new_param_units), original_param_units, new_param_units)
+  unitDifference <- ifelse(!is.na(new_param_units), TRUE, FALSE)
   
   results_df <- data.table(
     "ThresholdID" = t_id,
@@ -1189,9 +1196,10 @@ for(t_id in unique(qs2$ThresholdID)){
     "QuadSize_m2" = unique(new_subset$QuadSize_m2),
     "OriginalParameterName" = og_param,
     "NewParameterName" = new_param,
+    "NameDifference" = nameDifferent,
     "OriginalParmaterUnits" = original_param_units,
     "NewParmaterUnits" = unitDifferent,
-    "NameDifference" = nameDifferent,
+    "UnitDifference" = unitDifference,
     "OriginalLowQuantile" = original_q_low,
     "NewLowQuantile" = new_q_low,
     "OriginalHighQuantile" = original_q_high,
@@ -1212,10 +1220,15 @@ for(t_id in unique(qs2$ThresholdID)){
       LowQuantile = ifelse(original_q_low!=new_q_low, new_q_low, LowQuantile),
       HighQuantile = ifelse(original_q_high!=new_q_high, new_q_high, HighQuantile),
       ActionNeededDate = ifelse(!is.na(actionNeeded), Sys.Date(), NA),
-      QuantileSource = ifelse(!is.na(actionNeeded), qSourceText, NA)
+      QuantileDate = ifelse(!is.na(actionNeeded), Sys.Date(), QuantileDate),
+      QuantileSource = ifelse(!is.na(actionNeeded), qSourceText, QuantileSource)
       )]
 }
-results_table$ActionNeededDate <- as_date(results_table$ActionNeededDate, origin = "1899-12-30")
+results_table$ActionNeededDate <- as.Date(results_table$ActionNeededDate)
+test$QuantileDate <- as.Date(test$QuantileDate)
+test$ActionNeededDate <- as.Date(test$ActionNeededDate)
+
+# Setting headerstyle and creating "Difference Overview" workbook output
 hs <- openxlsx::createStyle(textDecoration = "BOLD")
 openxlsx::write.xlsx(results_table, 
                      file = paste0("output/ScriptResults/ChangeOverview/QuantileDifferenceOverview_",str_replace_all(Sys.Date(), "-", ""), ".xlsx"),
@@ -1229,25 +1242,33 @@ test[ThresholdID %in% idsNotInExport, `:=`
       HighQuantile = NA,
       ActionNeeded = NA,
       ActionNeededDate = NA,
-      QuantileSource = NA,
-      AdditionalComments = paste0(Habitat, " - ", ParameterName, " not included in Data Exports"))]
+      QuantileSource = ifelse(is.na(QuantileSource), NA, QuantileSource),
+      AdditionalComments = paste0(Habitat, " - ", ParameterName, " not included in SEACAR data export tables"))]
 
 # Exclude Braun Blanquet (+Modified) & Presence/Absence from Quantile results
 # Effective 6/18/24 - On next export run, change ActionNeeded and ActionNeededDate below to NA
-test[ParameterName %in% c("Braun Blanquet Score", "Modified Braun Blanquet Score", "Presence/Absence"), 
+test[ParameterName %in% c("Braun Blanquet Score", 
+                          "Modified Braun Blanquet Score", 
+                          "Presence/Absence"),
      `:=` (LowQuantile = NA,
            HighQuantile = NA,
            ActionNeeded = "U",
            ActionNeededDate = Sys.Date(),
            QuantileSource = NA,
-           AdditionalComments = paste0(ParameterName, " not included in Quantile Analysis"))]
+           AdditionalComments = paste0(Habitat, " - ", ParameterName, " not included in quantile analysis"))]
 test[, `:=` (ScriptLatestRunVersion = scriptversion, 
              ScriptLatestRunDate = Sys.Date())]
 test[, `:=` (ActionNeededDate = as_date(ActionNeededDate, origin = "1899-12-30"),
              ScriptLatestRunDate = as_date(ScriptLatestRunDate, origin = "1899-12-30"))]
 
+# Load in previous workbook as template
 wb <- loadWorkbook("output/ScriptResults/Database_Thresholds.xlsx")
+# Text to display date script was run
 updateText <- paste0("Updated: ",Sys.Date())
+
+# Ensure Calculated and IsSpeciesSpecific columns
+test$Calculated <- as.integer(as.logical(test$Calculated))
+test$isSpeciesSpecific <- as.integer(as.logical(test$isSpeciesSpecific))
 
 cols1 <- c(1:17)
 cols2 <- seq(18, ncol(test))
