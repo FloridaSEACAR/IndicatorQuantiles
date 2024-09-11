@@ -58,23 +58,88 @@ parstoskip <- c("")
 
 #What are the strings that need to be interpreted as NA values?
 nas <- c("NULL", "NA", "")
-# Now using SEACAR_Metadata (provided with Data exports) as Workbook template
-# Sheet "Ref_QAThresholds"
-# reffilepath <- "data/SEACAR_Metadata.xlsx"
-# ref_parameters <- setDT(read.xlsx(reffilepath, 
-#                                   sheet = "Ref_QAThresholds", startRow = 7, sep.names = "_"))
 
 reffilepath <- "output/ScriptResults/Database_Thresholds.xlsx"
-ref_parameters <- setDT(read.xlsx(reffilepath, sheet = 1, startRow = 3))
+ref_parameters <- setDT(read.xlsx(reffilepath, sheet = 1, startRow = 7))
 
-# Modify column names (replace "_" with "" while making exception for QuadSize_m2)
-# modify_colnames <- function(colnames, exception) {
-#   sapply(colnames, function(name) {if (name == exception) {return("QuadSize_m2")} else {return(gsub("_", "", name))}})}
-# 
-# names(ref_parameters) <- modify_colnames(names(ref_parameters), "Quad_Size_m2")
-
+# Make copy of original ref_parameters file
 ref_parameters_original <- copy(ref_parameters)
 ref_parameters <- ref_parameters[IndicatorName!="Acreage", ]
+
+win_threshold_path <- "http://publicfiles.dep.state.fl.us/DEAR/WIN/MDQS/4_Activity_Result_WIN_Standards.xlsx"
+
+#### Update WIN Thresholds to latest version ----
+win_thresholds <- setDT(read.xlsx(win_threshold_path, sheet = "RangeCheck(Matrix-238)", startRow = 3))
+win_thresholds <- win_thresholds[Matrix=="AQUEOUS-Surface Water"]
+
+# Value imputation must account for when value==0, convert to 0.000001
+impute_val <- function(val, thres){
+  if(thres=="low"){
+    ifelse(val==0, -0.000001, val)
+  } else if(thres=="high"){
+    ifelse(val==0, 0.000001, val)
+  }
+}
+
+# Initialize a data.table to store the differences
+threshold_changes <- data.table(ParameterName = character(), 
+                                OldLowThreshold = numeric(), NewLowThreshold = numeric(),
+                                OldHighThreshold = numeric(), NewHighThreshold = numeric(),
+                                change = logical())
+
+# Mapping of ParameterName to AnalyteName and thresholds
+threshold_mapping <- list(
+  list(param = "Dissolved Oxygen", analyte = "Dissolved Oxygen"),
+  list(param = "Dissolved Oxygen Saturation", analyte = "Dissolved oxygen saturation"),
+  list(param = "pH", analyte = "pH"),
+  list(param = "Specific Conductivity", analyte = "Specific Conductance", factor = 1000),
+  list(param = "Water Temperature", analyte = "Temperature, Water", sheet = "RangeCheck(ActivityType-237)", activity_type = "Field")
+)
+
+# Function to get the thresholds and log changes if they differ
+get_thresholds_and_log_changes <- function(param_info) {
+  factor <- param_info$factor %||% 1 # Default factor is 1 if not specified
+  sheet <- param_info$sheet %||% NULL
+  activity_type <- param_info$activity_type %||% NULL
+  
+  if (!is.null(sheet)) {
+    win_thresholds_wt <- setDT(read.xlsx(win_threshold_path, sheet = sheet, startRow = 3))
+    thresholds <- win_thresholds_wt[AnalyteName == param_info$analyte & Activity.Type == activity_type]
+  } else {
+    thresholds <- win_thresholds[AnalyteName == param_info$analyte]
+  }
+  
+  # Impute values
+  imputed_low <- impute_val(thresholds[, Lowest.Allowable.Threshold] / factor, "low")
+  imputed_high <- impute_val(thresholds[, Highest.Allowable.Threshold] / factor, "high")
+  
+  # Extract the old values from ref_parameters
+  old_low <- ref_parameters[CombinedTable == "Discrete WQ" & ParameterName == param_info$param, LowThreshold]
+  old_high <- ref_parameters[CombinedTable == "Discrete WQ" & ParameterName == param_info$param, HighThreshold]
+  
+  # Determine if there's a change in either threshold
+  change_flag <- (!is.na(old_low) && old_low != imputed_low) || (!is.na(old_high) && old_high != imputed_high)
+  
+  # Log all entries and mark if there was a change
+  threshold_changes <<- rbind(threshold_changes, 
+                              data.table(ParameterName = param_info$param, 
+                                         OldLowThreshold = old_low, NewLowThreshold = imputed_low,
+                                         OldHighThreshold = old_high, NewHighThreshold = imputed_high,
+                                         change = change_flag))
+  
+  list(low = imputed_low, high = imputed_high)
+}
+
+# Apply the thresholds and log changes once per ParameterName
+for (param_info in threshold_mapping) {
+  thresholds <- get_thresholds_and_log_changes(param_info)
+  
+  # Update both LowThreshold and HighThreshold in a single call
+  ref_parameters[CombinedTable == "Discrete WQ" & ParameterName == param_info$param, 
+                 `:=` (LowThreshold = thresholds$low, HighThreshold = thresholds$high)]
+}
+
+# Continue set-up ----
 
 #Specify GitHub user info
 github_user = "tylerhill122"
@@ -145,7 +210,7 @@ habitats <- unique(ref_parameters$Habitat)
 # subset for a given report
 # habitats <- c("Submerged Aquatic Vegetation")
 
-# Loop through each habitat
+# Loop through each habitat ----
 tic()
 for (h in habitats){
   
@@ -1124,6 +1189,7 @@ add_buffer <- function(value, param, quantile){
 }
 
 # Make a copy of summary_table
+# This will act as the "new" results table for comparison below
 # Prepare for display in excel workbook
 qs2 <- summary_table %>%
   dplyr::rowwise() %>%
@@ -1147,133 +1213,197 @@ output_file_date <- paste0("output/ScriptResults/",rawoutputname,"_",
                            str_replace_all(Sys.Date(), "-", ""), rawoutputextension)
 output_file <- paste0("output/ScriptResults/",rawoutputname, rawoutputextension)
 
+# QuantileSource text, capture git commit ID
 qSourceText <- paste0(rawoutputname, rawoutputextension, ", Git Commit ID: ", gitcommit)
 
-# Test copy of original 
-test <- copy(ref_parameters_original)
-test$ActionNeededDate <- as_date(test$ActionNeededDate, origin = "1899-12-30")
-test$ScriptLatestRunDate <- as_date(test$ScriptLatestRunDate, origin = "1899-12-30")
-# test$ActionNeeded <- NA
-test[, `:=` (QuantileDate = ActionNeededDate)]
+# New copy of original to update with values
+updatedTable <- copy(ref_parameters_original)
+updatedTable$ActionNeededDate <- as_date(updatedTable$ActionNeededDate, origin = "1899-12-30")
+updatedTable$ScriptLatestRunDate <- as_date(updatedTable$ScriptLatestRunDate, origin = "1899-12-30")
+updatedTable$QuantileDate <- as_date(updatedTable$QuantileDate, origin = "1899-12-30")
 
 # Create table to compare current vs. previous quantile results
-# Append "test" copy results, update where needed
+# Append "updatedTable" copy results, update where needed
 results_table <- data.table()
 for(t_id in unique(qs2$ThresholdID)){
+  # Grab combined table name for display in overview
+  combinedTable <- ref_parameters[ThresholdID==t_id, unique(CombinedTable)]
+  
+  # Original_subset and new_subset to compare old and new values
   original_subset <- ref_parameters_original[ThresholdID==t_id, ]
   new_subset <- qs2[ThresholdID==t_id, ]
   
+  # Original ParameterName and units
   og_param <- unique(original_subset$ParameterName)
   original_param_units <- unique(original_subset$Units)
+  
+  # Original Quantile values, low and high
   original_q_low <- round(original_subset$LowQuantile,6)
   original_q_high <- round(original_subset$HighQuantile,6)
+  # Original Threshold values, low and high
+  original_t_low <- round(original_subset$LowThreshold,6)
+  original_t_high <- round(original_subset$HighThreshold,6)
   
+  # New ParameterName and units
   new_param <- unique(new_subset$ParameterName)
   new_param_units <- unique(new_subset$ParameterUnits)
+  
+  # New Quantile values, low and high
   new_q_low <- round(new_subset$LowQuantile,6)
   new_q_high <- round(new_subset$HighQuantile,6)
   
-  # print(paste0("Threshold ID: ",t_id))
-  # print(paste0("Original ",og_param, " : ", original_param_units))
-  # print(paste0("New ",new_param, " : ", new_param_units))
+  # Grab new threshold values from "modified" ref_parameters
+  # This accounts for the updated WIN thresholds
+  new_t_low <- round(ref_parameters[ThresholdID==t_id, ]$LowThreshold,6)
+  new_t_high <- round(ref_parameters[ThresholdID==t_id, ]$HighThreshold,6)
   
-  # print(paste0("Threshold ID: ",t_id))
-  # print(paste0("Original ",og_param, " (low) : ", original_q_low))
-  # print(paste0("New ",new_param, " (low) : ", new_q_low))
+  # Update actionNeeded column
+  actionNeeded <- ifelse(original_q_low!=new_q_low | original_q_high!=new_q_high | 
+                           original_t_low!=new_t_low | original_t_high!=new_t_high, "U", NA)
   
-  # print(paste0("Original ",og_param, " (high) : ", original_q_high))
-  # print(paste0("New ",new_param, " (high) : ", new_q_high))
-  
-  actionNeeded <- ifelse(original_q_low!=new_q_low | original_q_high!=new_q_high, "U", NA)
-  
+  # Determine if names or units differ
   nameDifferent <- ifelse(og_param!=new_param, TRUE, FALSE)
-  unitDifferent <- ifelse(is.na(new_param_units), original_param_units, new_param_units)
-  unitDifference <- ifelse(!is.na(new_param_units), TRUE, FALSE)
+  # variable to store new units if new, old units if not
+  updatedUnits <- ifelse(is.na(new_param_units), original_param_units, new_param_units)
+  # T/F value if units have changed
+  unitDifference <- ifelse(original_param_units!=updatedUnits, TRUE, FALSE)
   
+  # Create table to display change overview
   results_df <- data.table(
     "ThresholdID" = t_id,
+    "CombinedTable" = combinedTable,
     "Habitat" = unique(new_subset$Habitat),
     "QuadSize_m2" = unique(new_subset$QuadSize_m2),
     "OriginalParameterName" = og_param,
     "NewParameterName" = new_param,
     "NameDifference" = nameDifferent,
     "OriginalParmaterUnits" = original_param_units,
-    "NewParmaterUnits" = unitDifferent,
+    "NewParmaterUnits" = updatedUnits,
     "UnitDifference" = unitDifference,
+    
     "OriginalLowQuantile" = original_q_low,
     "NewLowQuantile" = new_q_low,
+    
     "OriginalHighQuantile" = original_q_high,
     "NewHighQuantile" = new_q_high,
+    
+    "OriginalLowThreshold" = original_t_low,
+    "NewLowThreshold" = new_t_low,
+    
+    "OriginalHighThreshold" = original_t_high,
+    "NewHighThreshold" = new_t_high,
+    
     "ActionNeeded" = actionNeeded,
-    "ActionNeededDate" = ifelse(!is.na(actionNeeded), Sys.Date(), NA)
+    "ActionNeededDate" = ifelse(!is.na(actionNeeded), Sys.Date(), NA),
+    
+    "mean" = new_subset$mean,
+    "n_tot" = new_subset$n_tot,
+    "n_q_low" = new_subset$n_q_low,
+    "n_q_high" = new_subset$n_q_high
   )
   
+  # Save change_overview information
   results_table <- bind_rows(results_table, results_df)
   
   # Append results to original table
   # Add new units
-  test[
+  updatedTable[
     ThresholdID==t_id, `:=` (
       ParameterName = ifelse(nameDifferent, new_param, ParameterName),
-      Units = unitDifferent,
+      Units = updatedUnits,
       ActionNeeded = actionNeeded,
       LowQuantile = ifelse(original_q_low!=new_q_low, new_q_low, LowQuantile),
       HighQuantile = ifelse(original_q_high!=new_q_high, new_q_high, HighQuantile),
+      LowThreshold = ifelse(original_t_low!=new_t_low, new_t_low, LowThreshold),
+      HighThreshold = ifelse(original_t_high!=new_t_high, new_t_high, HighThreshold),
       ActionNeededDate = ifelse(!is.na(actionNeeded), Sys.Date(), NA),
       QuantileDate = ifelse(!is.na(actionNeeded), Sys.Date(), QuantileDate),
       QuantileSource = ifelse(!is.na(actionNeeded), qSourceText, QuantileSource)
       )]
 }
 results_table$ActionNeededDate <- as.Date(results_table$ActionNeededDate)
-test$QuantileDate <- as.Date(test$QuantileDate)
-test$ActionNeededDate <- as.Date(test$ActionNeededDate)
+updatedTable$QuantileDate <- as.Date(updatedTable$QuantileDate)
+updatedTable$ActionNeededDate <- as.Date(updatedTable$ActionNeededDate)
+
+# Remove BB & P/A from Quantiles
+results_table[
+  OriginalParameterName %in% c("Braun Blanquet Score", 
+                               "Modified Braun Blanquet Score", 
+                               "Presence/Absence"),
+  `:=` (NewLowQuantile = NA, NewHighQuantile = NA, ActionNeeded = NA)]
 
 # Setting headerstyle and creating "Difference Overview" workbook output
+wb <- createWorkbook()
 hs <- openxlsx::createStyle(textDecoration = "BOLD")
-openxlsx::write.xlsx(results_table, 
-                     file = paste0("output/ScriptResults/ChangeOverview/QuantileDifferenceOverview_",str_replace_all(Sys.Date(), "-", ""), ".xlsx"),
-                     headerStyle = hs, colWidths = "auto")
+addWorksheet(wb, "Quantile Difference Overview")
+writeDataTable(wb, 1, results_table, tableStyle = "TableStyleMedium2", headerStyle = hs)
+
+# Apply condtional formatting to highlight UpdateNeeded column
+updateStyle <- createStyle(fontColour = "#007B74", bgFill = "#C6EFCE")
+conditionalFormatting(wb, "Quantile Difference Overview",
+                      rows = 2:nrow(results_table), type="beginsWith",
+                      cols = 19, rule = "U", style=updateStyle)
+# Highlight New Quantiles High/Low
+conditionalFormatting(wb, "Quantile Difference Overview",
+                      rows = 2:nrow(results_table), type = "expression", 
+                      cols = 12, rule = "K2<>L2", style = updateStyle)
+conditionalFormatting(wb, "Quantile Difference Overview",
+                      rows = 2:nrow(results_table), type = "expression", 
+                      cols = 14, rule = "M2<>N2", style = updateStyle)
+# Highlight if there is a difference in WIN Thresholds High/Low
+newThreshStyle <- createStyle(fontColour = "#AD5724", bgFill = "#FFEB9C")
+conditionalFormatting(wb, "Quantile Difference Overview",
+                      rows = 2:nrow(results_table), type = "expression", 
+                      cols = 18, rule = "R2<>Q2", style = newThreshStyle)
+conditionalFormatting(wb, "Quantile Difference Overview",
+                      rows = 2:nrow(results_table), type = "expression", 
+                      cols = 16, rule = "P2<>O2", style = newThreshStyle)
+# Save QuantileDifferenceOverview workbook
+saveWorkbook(wb, paste0("output/ScriptResults/ChangeOverview/QuantileDifferenceOverview_",str_replace_all(Sys.Date(), "-", ""), ".xlsx"), TRUE)
 
 # Grab list of Threshold IDs which are not included in Export tables
 # but are included in Database_Thresholds 
-idsNotInExport <- setdiff(test$ThresholdID, qs2$ThresholdID)
-test[ThresholdID %in% idsNotInExport, `:=` 
-     (LowQuantile = NA,
-      HighQuantile = NA,
-      ActionNeeded = NA,
-      ActionNeededDate = NA,
-      QuantileSource = ifelse(is.na(QuantileSource), NA, QuantileSource),
-      AdditionalComments = paste0(Habitat, " - ", ParameterName, " not included in SEACAR data export tables"))]
+idsNotInExport <- setdiff(updatedTable$ThresholdID, qs2$ThresholdID)
+updatedTable[
+  ThresholdID %in% idsNotInExport, `:=` 
+  (LowQuantile = NA,
+    HighQuantile = NA,
+    ActionNeeded = NA,
+    ActionNeededDate = NA,
+    QuantileSource = ifelse(is.na(QuantileSource), NA, QuantileSource),
+    AdditionalComments = paste0(Habitat, " - ", ParameterName, " not included in SEACAR data export tables"))]
 
 # Exclude Braun Blanquet (+Modified) & Presence/Absence from Quantile results
-# Effective 6/18/24 - On next export run, change ActionNeeded and ActionNeededDate below to NA
-test[ParameterName %in% c("Braun Blanquet Score", 
-                          "Modified Braun Blanquet Score", 
-                          "Presence/Absence"),
-     `:=` (LowQuantile = NA,
-           HighQuantile = NA,
-           ActionNeeded = "U",
-           ActionNeededDate = Sys.Date(),
-           QuantileSource = NA,
-           AdditionalComments = paste0(Habitat, " - ", ParameterName, " not included in quantile analysis"))]
-test[, `:=` (ScriptLatestRunVersion = scriptversion, 
+updatedTable[ParameterName %in% c("Braun Blanquet Score", 
+                                  "Modified Braun Blanquet Score", 
+                                  "Presence/Absence"),
+             `:=` (LowQuantile = NA,
+                   HighQuantile = NA,
+                   ActionNeeded = NA,
+                   ActionNeededDate = NA,
+                   QuantileSource = NA,
+                   AdditionalComments = paste0(Habitat, " - ", ParameterName, " not included in quantile analysis"))]
+# Use today's date as ScriptLatestRunDate, provide scriptversion
+updatedTable[, `:=` (ScriptLatestRunVersion = scriptversion, 
              ScriptLatestRunDate = Sys.Date())]
-test[, `:=` (ActionNeededDate = as_date(ActionNeededDate, origin = "1899-12-30"),
+updatedTable[, `:=` (ActionNeededDate = as_date(ActionNeededDate, origin = "1899-12-30"),
              ScriptLatestRunDate = as_date(ScriptLatestRunDate, origin = "1899-12-30"))]
 
 # Load in previous workbook as template
 wb <- loadWorkbook("output/ScriptResults/Database_Thresholds.xlsx")
+# wb <- loadWorkbook("output/ScriptResults/Database_Thresholds_20240715.xlsx")
 # Text to display date script was run
 updateText <- paste0("Updated: ",Sys.Date())
 
-# Ensure Calculated and IsSpeciesSpecific columns
-test$Calculated <- as.integer(as.logical(test$Calculated))
-test$isSpeciesSpecific <- as.integer(as.logical(test$isSpeciesSpecific))
+# Ensure Calculated and IsSpeciesSpecific columns are displayed as 1,0
+updatedTable$Calculated <- as.integer(as.logical(updatedTable$Calculated))
+updatedTable$isSpeciesSpecific <- as.integer(as.logical(updatedTable$isSpeciesSpecific))
 
+# Setting columns to "impute", writing updated data tables into previous template
 cols1 <- c(1:17)
-cols2 <- seq(18, ncol(test))
+cols2 <- seq(18, ncol(updatedTable))
 writeData(wb, sheet = 1, updateText, startRow=3)
-writeData(wb, sheet = 1, test[, ..cols1], startRow=7)
-writeData(wb, sheet = 1, test[, ..cols2], startRow=7, startCol=19)
+writeData(wb, sheet = 1, updatedTable[, ..cols1], startRow=7)
+writeData(wb, sheet = 1, updatedTable[, ..cols2], startRow=7, startCol=19)
 saveWorkbook(wb, here::here(output_file_date), overwrite = T)
 saveWorkbook(wb, here::here(output_file), overwrite = T)
