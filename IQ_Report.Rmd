@@ -76,9 +76,10 @@ The following quantile thresholds are used for flagging "questionable" values:
 * Lower quantile: **`r quant_low`**
 * Upper quantile: **`r quant_high`**  
 
-The following parameters are being excluded from this analysis:
 
-```{r excluded_params, results='asis'} 
+```{r excluded_params, results='asis', eval=FALSE} 
+cat("The following parameters are being excluded from this analysis: ")
+cat("  \n")
 for(par in parstoskip){
   cat(paste0("* *",par,"*"))
 }
@@ -261,13 +262,18 @@ if(h=="Water Column"){
   # Latex format for longer oyster parameter names (quadsize included)
   # table_format <- ifelse(h=="Oyster/Oyster Reef", "latex", "simple")
   table_format <- "simple"
-  select_columns <- c("ParameterName", "q_low", "q_high", "mean", "n_tot", "n_q_low", "n_q_high")
+  
+  if(h=="Oyster/Oyster Reef"){
+    select_columns <- c("ParameterName", "QuadSize_m2", "q_low", "q_high", "mean", "n_tot", "n_q_low", "n_q_high")
+  } else {
+    select_columns <- c("ParameterName", "q_low", "q_high", "mean", "n_tot", "n_q_low", "n_q_high")
+  }
   
   for (ind in indicators){
     cat(paste0("*Indicator*: **",ind,"**"))
     cat("\n\n")
     
-    table_data <- qs_dat %>%
+    table_data <- qs %>%
       filter(Habitat == h, IndicatorName == ind) %>%
       select(select_columns) %>%
       mutate(`pct_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
@@ -421,15 +427,27 @@ quantile_table_display <- function(quantile, hab) {
         
         if(p %in% parstoskip) next
         
-        if (nrow(q_values %>% filter(ParameterName == p)) > 0) {
-          
+        # Oyster parameters contain quadsize as variable p so will not filter ParameterName
+        if(h=="Oyster/Oyster Reef"){
+          filter_vals <- q_values
+        } else {
+          filter_vals <- q_values %>% filter(ParameterName == p)
+        }
+        
+        if(nrow(filter_vals) > 0) {
           subtitle <- glue("### {p}")
           cat("\n\n")
           cat(subtitle, "\n\n")
           
-          q_par_values <- q_values %>% 
-            filter(ParameterName == p) %>%
-            arrange(ProgramID, ProgramLocationID, SampleDate)
+          # Oyster parameters contain quadsize as variable p so will not filter ParameterName
+          if(h=="Oyster/Oyster Reef"){
+            q_par_values <- q_values %>% 
+              arrange(ProgramID, ProgramLocationID, SampleDate)
+          } else {
+            q_par_values <- q_values %>% 
+              filter(ParameterName == p) %>%
+              arrange(ProgramID, ProgramLocationID, SampleDate)
+          }
           
           # create mask for habitats that include speciesname(CommonID) info in table
           spec_habitats <- c("Coral/Coral Reef", "Submerged Aquatic Vegetation")
@@ -447,8 +465,23 @@ quantile_table_display <- function(quantile, hab) {
           q_value_table <- q_par_values %>%
             select(-ProgramName)
           
-          low_thres <- qs_dat %>% dplyr::filter(ParameterName==p) %>% dplyr::pull(q_low)
-          high_thres <- qs_dat %>% dplyr::filter(ParameterName==p) %>% dplyr::pull(q_high)
+          if(h=="Oyster/Oyster Reef"){
+            parameterID <- unique(q_values$ParameterID)
+            qSize <- unique(q_values$QuadSize_m2)
+            
+            low_thres <- qs %>%
+              dplyr::filter(ParameterID == parameterID, 
+                            (QuadSize_m2 == qSize | is.na(QuadSize_m2) & is.na(qSize))) %>%
+              dplyr::pull(q_low)
+            
+            high_thres <- qs %>%
+              dplyr::filter(ParameterID == parameterID, 
+                            (QuadSize_m2 == qSize | is.na(QuadSize_m2) & is.na(qSize))) %>%
+              dplyr::pull(q_high)
+          } else {
+            low_thres <- qs_dat %>% dplyr::filter(ParameterName==p) %>% dplyr::pull(q_low)
+            high_thres <- qs_dat %>% dplyr::filter(ParameterName==p) %>% dplyr::pull(q_high)
+          }
           
           threshold <- ifelse(quantile == "low", low_thres, high_thres)
           
