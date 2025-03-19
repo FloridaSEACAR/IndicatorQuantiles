@@ -72,7 +72,7 @@ win_threshold_path <- "http://publicfiles.dep.state.fl.us/DEAR/WIN/MDQS/4_Activi
 win_thresholds <- setDT(read.xlsx(win_threshold_path, sheet = "RangeCheck(Matrix-238)", startRow = 3))
 win_thresholds <- win_thresholds[Matrix=="AQUEOUS-Surface Water"]
 
-# Value imputation must account for when value==0, convert to 0.000001
+# Value imputation must account for when value==0, and convert to +/-0.000001
 impute_val <- function(val, thres){
   if(thres=="low"){
     ifelse(val==0, -0.000001, val)
@@ -1393,7 +1393,7 @@ updatedTable[, `:=` (ActionNeededDate = as_date(ActionNeededDate, origin = "1899
 wb <- loadWorkbook("output/ScriptResults/Database_Thresholds.xlsx")
 # wb <- loadWorkbook("output/ScriptResults/Database_Thresholds_20240715.xlsx")
 # Text to display date script was run
-updateText <- paste0("Updated: ",Sys.Date())
+updateText <- paste0("Script Run: ",Sys.Date())
 
 # Ensure Calculated and IsSpeciesSpecific columns are displayed as 1,0
 updatedTable$Calculated <- as.integer(as.logical(updatedTable$Calculated))
@@ -1402,7 +1402,8 @@ updatedTable$isSpeciesSpecific <- as.integer(as.logical(updatedTable$isSpeciesSp
 # Setting columns to "impute", writing updated data tables into previous template
 cols1 <- c(1:17)
 cols2 <- seq(18, ncol(updatedTable))
-writeData(wb, sheet = 1, updateText, startRow=3)
+writeData(wb, sheet = 1, updateText, startRow=2)
+writeData(wb, sheet = 1, "", startRow=3)
 writeData(wb, sheet = 1, updatedTable[, ..cols1], startRow=7)
 writeData(wb, sheet = 1, updatedTable[, ..cols2], startRow=7, startCol=19)
 saveWorkbook(wb, here::here(output_file_date), overwrite = T)
