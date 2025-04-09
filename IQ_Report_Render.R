@@ -745,14 +745,18 @@ for (h in habitats){
     
     # load in habitat data
     data <- fread(file, sep="|", na.strings = nas)
+    ##### TEMPORARY
+    data[ProgramID==4016 & Month==6 & Year==2024 & LiveDate_Qualifier=="Estimated", `:=` (LiveDate_Qualifier = "Estimate")]
+    #####
     data <- data[Include==1 & MADup==1 & !is.na(ResultValue), ]
     
     # Adjustments to quad size & other temporary fixes
-    data[QuadSize_m2 == 0.06, QuadSize_m2 := 0.0625]
     data[ProgramID == 4042 & is.na(QuadSize_m2), QuadSize_m2 := fcase(SampleDate == as_date("2014-06-11"), 1,
                                                                       SampleDate >= as_date("2014-11-11") & SampleDate <= as_date("2015-01-22"), 0.33,
                                                                       SampleDate >= as_date("2015-03-04"), 0.0625)]
-    data[ProgramID == 5035, QuadSize_m2 := NA]
+    # ID_5025 Size Class data: quad sizes used to determine 2D surface area
+    # 3D samples could be unrepresentative of numbers and size ranges of specimens from normal, surface quad sizes.
+    data[ProgramID == 5035 & IndicatorName=="Size Class", QuadSize_m2 := NA]
     
     qs_dat <- table_template()
     
