@@ -27,7 +27,12 @@ library(dplyr)
 library(git2r)
 
 # Set to TRUE to render IQ Reports for each habitat
-render_reports <- TRUE
+render_reports <- FALSE
+
+# Set to TRUE ONLY when you want to overwrite the final output file (Database_Thresholds.xlsx). 
+# This should ONLY be set to TRUE once new export deliverables have been approved, in preparation to send Database_Thresholds.xlsx to USF
+# Setting to FALSE allows for QAQC within deliverable approval process. An output file is created with the date appended either way.
+overwrite_final <- FALSE
 
 # import "seacar_data_location" variable which points to data directory
 source("seacar_data_location.R")
@@ -58,6 +63,13 @@ parstoskip <- c("")
 
 #What are the strings that need to be interpreted as NA values?
 nas <- c("NULL", "NA", "")
+
+#### Temporary to account for addition of new parameters
+# Bring in latest metadata file sent by Claude on 10/20/2025
+# ref_parameters <- setDT(read.xlsx("data/SEACAR_Metadata_20251015.xlsx", sheet = "Ref_QAThresholds", startRow = 7))
+# names(ref_parameters) <- gsub("\\.", "", names(ref_parameters))
+# setnames(ref_parameters, "QuadSizem2", "QuadSize_m2")
+# setnames(ref_parameters, "IsSpeciesSpecific", "isSpeciesSpecific")
 
 reffilepath <- "output/ScriptResults/Database_Thresholds.xlsx"
 ref_parameters <- setDT(read.xlsx(reffilepath, sheet = 1, startRow = 7))
@@ -131,7 +143,7 @@ get_thresholds_and_log_changes <- function(param_info) {
 }
 
 # Apply the thresholds and log changes once per ParameterName
-for (param_info in threshold_mapping) {
+for(param_info in threshold_mapping){
   thresholds <- get_thresholds_and_log_changes(param_info)
   
   # Update both LowThreshold and HighThreshold in a single call
@@ -155,24 +167,22 @@ scriptversion <- paste0(scriptname, ", Git Commit ID: ", gitcommit_script)
 gitcommit <- system("git rev-parse HEAD", intern=TRUE)
 
 table_template <- function(){
-  return(
-    data.table(
-      ParameterID = numeric(),
-      ParameterName = character(),
-      ParameterUnits = character(),
-      IndicatorID = numeric(),
-      IndicatorName = character(),
-      Habitat = character(),
-      ThresholdID = numeric(),
-      sub_parameter = character(),
-      q_low = integer(),
-      q_high = integer(),
-      mean = integer(),
-      n_tot = integer(),
-      n_q_low = integer(),
-      n_q_high = integer(),
-      QuadSize_m2 = integer()
-    )
+  data.table(
+    ParameterID = numeric(),
+    ParameterName = character(),
+    ParameterUnits = character(),
+    IndicatorID = numeric(),
+    IndicatorName = character(),
+    Habitat = character(),
+    ThresholdID = numeric(),
+    sub_parameter = character(),
+    q_low = integer(),
+    q_high = integer(),
+    mean = integer(),
+    n_tot = integer(),
+    n_q_low = integer(),
+    n_q_high = integer(),
+    QuadSize_m2 = integer()
   )
 }
 
@@ -212,7 +222,7 @@ habitats <- unique(ref_parameters$Habitat)
 
 # Loop through each habitat ----
 tic()
-for (h in habitats){
+for(h in habitats){
   
   if(h=="Water Column"){
     
@@ -318,7 +328,7 @@ for (h in habitats){
       qs_dat <- table_template()
       
       # Discrete processing
-      for (file in wq_disc_files){
+      for(file in wq_disc_files){
         
         # shortened file name
         file_short <- tail(str_split(file, "/")[[1]], 1)
@@ -326,25 +336,55 @@ for (h in habitats){
         data <- fread(file, sep='|', na.strings = nas)
         data <- data[Include==1 & MADup==1 & !is.na(ResultValue), ]
         
-        param_id <- unique(data$ParameterID)
-        param_name <- unique(data$ParameterName)
-        param_units <- unique(data$ParameterUnits)
+        if(nrow(data)==0){
+          cat("No data detected within filename:", file_short, "\n")
+          # param_name <- readline(prompt = "What parameter matches this filename?")
+          param_num <- menu(sort(unique(ref_parameters_original$ParameterName)), title = glue("Enter the # which matches this filename: {file_short}"))
+          param_name <- sort(unique(ref_parameters_original$ParameterName))[param_num]
+          param_id <- ref_parameters[ParameterName==param_name & CombinedTable=="Discrete WQ", ParameterID]
+          param_units <- ref_parameters[ParameterName==param_name & CombinedTable=="Discrete WQ", Units]
+        } else {
+          param_id <- unique(data$ParameterID)
+          param_name <- unique(data$ParameterName)
+          param_units <- unique(data$ParameterUnits)
+        }
         
         # Update ParameterName and Units in ref_parameters
         # This maintains consistency with new exports
-        ref_parameters[ParameterID==param_id, `:=` (ParameterName = param_name,
-                                                    Units = param_units)]
+        # New parameter: check to see if ParameterID isn't currently available, add if so
+        if(nrow(ref_parameters[ParameterID==param_id, ])==0){
+          cat("New parameter detected", "\n")
+          thres_id <- readline(prompt = glue("Enter New ThresholdID for {param_name}: "))
+          thres_id <- as.numeric(thres_id)
+          # thres_id <- ifelse(param_id==83, 91, ifelse(param_id==82, 90, NA))
+          
+          if(is.na(thres_id)){cat("Missing ThresholdID, continuing...\n")}
+          ref_parameters <- bind_rows(ref_parameters, data.frame(ParameterID = param_id,
+                                                                 ParameterName = param_name,
+                                                                 Units = param_units,
+                                                                 Habitat = unique(data$Habitat),
+                                                                 IndicatorID = unique(data$IndicatorID),
+                                                                 IndicatorName = unique(data$IndicatorName),
+                                                                 CombinedTable = type_name,
+                                                                 ThresholdID = thres_id))
+        } else {
+          ref_parameters[ParameterID==param_id, `:=` (ParameterName = param_name,
+                                                      Units = param_units)]
+        }
         
         for (p in param_name){
           if(p %in% parstoskip){next}
-          
-          threshold_id <- ref_parameters[ParameterID==param_id & CombinedTable==type_name, 
-                                         ThresholdID]
-          # Set indicator name for each parameter (WC, WQ, NUT)
-          i <- ref_parameters[ParameterID==param_id & CombinedTable==type_name, 
-                              unique(IndicatorName)]
-          i_id <- ref_parameters[ParameterID==param_id & CombinedTable==type_name, 
-                                 unique(IndicatorID)]
+          # Grab pre-existing threshold id value if available
+          threshold_id <- ref_parameters[ParameterID==param_id & CombinedTable==type_name, ThresholdID]
+          # Check if threshold id exists (for new parameters):
+          if(anyNA(threshold_id)){
+            i <- unique(data$IndicatorName)
+            i_id <- unique(data$IndicatorID)
+          } else {
+            # Set indicator name for each parameter (WC, WQ, NUT)
+            i <- ref_parameters[ParameterID==param_id & CombinedTable==type_name, unique(IndicatorName)]
+            i_id <- ref_parameters[ParameterID==param_id & CombinedTable==type_name, unique(IndicatorID)]      
+          }
           
           # If parameter is "Total Nitrogen", calculate quantiles/SDs separately for "uncalculated" records
           if(p == "Total Nitrogen"){
@@ -441,26 +481,43 @@ for (h in habitats){
             
           } else {
             
-            # Record data totals by parameter
-            p_count <- data %>%
-              dplyr::group_by(ProgramID, ParameterName) %>%
-              dplyr::summarise(n_tot = n(), .groups = "keep")
-            p_count$typeName <- type_name
+            # Record data totals by parameter with `p_count`
+            # Record parameter quantiles with `dat_par`
+            if(nrow(data)==0){
+              p_count <- data.frame(ProgramID=NA, ParameterName=p, n_tot=0, typeName=type_name)
+              
+              dat_par <- data.frame(ParameterID = param_id,
+                                    ParameterName = p,
+                                    ParameterUnits = param_units,
+                                    IndicatorID = i_id,
+                                    IndicatorName = i,
+                                    Habitat = h,
+                                    ThresholdID = threshold_id,
+                                    q_low = NA,
+                                    q_high = NA,
+                                    mean = NA,
+                                    n_tot = 0)
+            } else {
+              p_count <- data %>%
+                dplyr::group_by(ProgramID, ParameterName) %>%
+                dplyr::summarise(n_tot = n(), .groups = "keep")
+              p_count$typeName <- type_name
+              
+              dat_par <- data[ParameterName==p & !is.na(ResultValue) & MADup == 1 & Include == 1,
+                              .(ParameterID = param_id,
+                                ParameterName = p,
+                                ParameterUnits = param_units,
+                                IndicatorID = i_id,
+                                IndicatorName = i,
+                                Habitat = h,
+                                ThresholdID = threshold_id,
+                                q_low = quantile(ResultValue, probs = quant_low),
+                                q_high = quantile(ResultValue, probs = quant_high),
+                                mean = mean(ResultValue),
+                                n_tot = length(ResultValue))]
+            }
             
             program_counts <- bind_rows(program_counts, p_count)
-            
-            dat_par <- data[ParameterName==p & !is.na(ResultValue) & MADup == 1 & Include == 1,
-                            .(ParameterID = param_id,
-                              ParameterName = p,
-                              ParameterUnits = param_units,
-                              IndicatorID = i_id,
-                              IndicatorName = i,
-                              Habitat = h,
-                              ThresholdID = threshold_id,
-                              q_low = quantile(ResultValue, probs = quant_low),
-                              q_high = quantile(ResultValue, probs = quant_high),
-                              mean = mean(ResultValue),
-                              n_tot = length(ResultValue))]
             
             # pull high and low quantiles for filtering
             quant_low_value <- dat_par$q_low
@@ -745,16 +802,15 @@ for (h in habitats){
     
     # load in habitat data
     data <- fread(file, sep="|", na.strings = nas)
-    ##### TEMPORARY
-    data[ProgramID==4016 & Month==6 & Year==2024 & LiveDate_Qualifier=="Estimated", `:=` (LiveDate_Qualifier = "Estimate")]
-    #####
+    # 06-12-25 SEACAR Expanded boundaries, no longer subsetting data by ManagedArea
+    # Quantiles are Performed on entire dataset
     data <- data[Include==1 & MADup==1 & !is.na(ResultValue), ]
     
     # Adjustments to quad size & other temporary fixes
     data[ProgramID == 4042 & is.na(QuadSize_m2), QuadSize_m2 := fcase(SampleDate == as_date("2014-06-11"), 1,
                                                                       SampleDate >= as_date("2014-11-11") & SampleDate <= as_date("2015-01-22"), 0.33,
                                                                       SampleDate >= as_date("2015-03-04"), 0.0625)]
-    # ID_5025 Size Class data: quad sizes used to determine 2D surface area
+    # ID_5035 Size Class data: quad sizes used to determine 2D surface area
     # 3D samples could be unrepresentative of numbers and size ranges of specimens from normal, surface quad sizes.
     data[ProgramID == 5035 & IndicatorName=="Size Class", QuadSize_m2 := NA]
     
@@ -1237,40 +1293,60 @@ for(t_id in unique(qs2$ThresholdID)){
   original_subset <- ref_parameters_original[ThresholdID==t_id, ]
   new_subset <- qs2[ThresholdID==t_id, ]
   
-  # Original ParameterName and units
-  og_param <- unique(original_subset$ParameterName)
-  original_param_units <- unique(original_subset$Units)
-  
-  # Original Quantile values, low and high
-  original_q_low <- round(original_subset$LowQuantile,6)
-  original_q_high <- round(original_subset$HighQuantile,6)
-  # Original Threshold values, low and high
-  original_t_low <- round(original_subset$LowThreshold,6)
-  original_t_high <- round(original_subset$HighThreshold,6)
+  # new parameter check; set all "original" values as NA
+  if(nrow(original_subset)==0){
+    og_param <- NA
+    original_param_units <- NA
+    original_q_low <- NA
+    original_q_high <- NA
+    original_t_low <- NA
+    original_t_high <- NA  
+  } else {
+    # Original ParameterName and units
+    og_param <- unique(original_subset$ParameterName)
+    original_param_units <- unique(original_subset$Units)
+    # Original Quantile values, low and high
+    original_q_low <- round(original_subset$LowQuantile,6)
+    original_q_high <- round(original_subset$HighQuantile,6)
+    # Original Threshold values, low and high
+    original_t_low <- round(original_subset$LowThreshold,6)
+    original_t_high <- round(original_subset$HighThreshold,6)    
+  }
   
   # New ParameterName and units
   new_param <- unique(new_subset$ParameterName)
   new_param_units <- unique(new_subset$ParameterUnits)
   
-  # New Quantile values, low and high
-  new_q_low <- round(new_subset$LowQuantile,6)
-  new_q_high <- round(new_subset$HighQuantile,6)
+  # New Quantile values, low and high (account for values which should not have quantile values)
+  new_q_low <- ifelse(new_param %in% c("Braun Blanquet Score", 
+                                       "Modified Braun Blanquet Score", 
+                                       "Presence/Absence"), 
+                      NA, round(new_subset$LowQuantile,6))
+  new_q_high <- ifelse(new_param %in% c("Braun Blanquet Score", 
+                                        "Modified Braun Blanquet Score", 
+                                        "Presence/Absence"), 
+                       NA, round(new_subset$HighQuantile,6))
   
   # Grab new threshold values from "modified" ref_parameters
   # This accounts for the updated WIN thresholds
   new_t_low <- round(ref_parameters[ThresholdID==t_id, ]$LowThreshold,6)
   new_t_high <- round(ref_parameters[ThresholdID==t_id, ]$HighThreshold,6)
   
-  # Update actionNeeded column
-  actionNeeded <- ifelse(original_q_low!=new_q_low | original_q_high!=new_q_high | 
-                           original_t_low!=new_t_low | original_t_high!=new_t_high, "U", NA)
+  # Update actionNeeded column (account for NA values)
+  actionNeeded <- ifelse(
+    (is.na(original_q_low) != is.na(new_q_low) | (!is.na(original_q_low) & original_q_low != new_q_low)) |
+      (is.na(original_q_high) != is.na(new_q_high) | (!is.na(original_q_high) & original_q_high != new_q_high)) |
+      (is.na(original_t_low) != is.na(new_t_low) | (!is.na(original_t_low) & original_t_low != new_t_low)) |
+      (is.na(original_t_high) != is.na(new_t_high) | (!is.na(original_t_high) & original_t_high != new_t_high)),
+    "U", NA
+  )
   
   # Determine if names or units differ
-  nameDifferent <- ifelse(og_param!=new_param, TRUE, FALSE)
+  nameDifferent <- ifelse((is.na(og_param)!=is.na(new_param)) | (og_param!=new_param), TRUE, FALSE)
   # variable to store new units if new, old units if not
   updatedUnits <- ifelse(is.na(new_param_units), original_param_units, new_param_units)
   # T/F value if units have changed
-  unitDifference <- ifelse(original_param_units!=updatedUnits, TRUE, FALSE)
+  unitDifference <- ifelse((is.na(original_param_units)!=is.na(updatedUnits)) | (original_param_units!=updatedUnits), TRUE, FALSE)
   
   # Create table to display change overview
   results_df <- data.table(
@@ -1305,36 +1381,68 @@ for(t_id in unique(qs2$ThresholdID)){
     "n_q_low" = new_subset$n_q_low,
     "n_q_high" = new_subset$n_q_high
   )
+  results_df$ActionNeededDate <- as.Date(results_df$ActionNeededDate)
   
   # Save change_overview information
   results_table <- bind_rows(results_table, results_df)
   
-  # Append results to original table
-  # Add new units
-  updatedTable[
-    ThresholdID==t_id, `:=` (
+  # Append results to original table, check if new parameters are available and add new units
+  if(t_id %in% updatedTable$ThresholdID){
+    # Update existing rows
+    updatedTable[ThresholdID==t_id, `:=` (
       ParameterName = ifelse(nameDifferent, new_param, ParameterName),
       Units = updatedUnits,
       ActionNeeded = actionNeeded,
-      LowQuantile = ifelse(original_q_low!=new_q_low, new_q_low, LowQuantile),
-      HighQuantile = ifelse(original_q_high!=new_q_high, new_q_high, HighQuantile),
-      LowThreshold = ifelse(original_t_low!=new_t_low, new_t_low, LowThreshold),
-      HighThreshold = ifelse(original_t_high!=new_t_high, new_t_high, HighThreshold),
+      LowQuantile = ifelse(
+        (is.na(original_q_low) != is.na(new_q_low)) | (!is.na(original_q_low) & original_q_low != new_q_low),
+        new_q_low, LowQuantile
+      ),
+      HighQuantile = ifelse(
+        (is.na(original_q_high) != is.na(new_q_high)) | (!is.na(original_q_high) & original_q_high != new_q_high),
+        new_q_high, HighQuantile
+      ),
+      LowThreshold = ifelse(
+        (is.na(original_t_low) != is.na(new_t_low)) | (!is.na(original_t_low) & original_t_low != new_t_low),
+        new_t_low, LowThreshold
+      ),
+      HighThreshold = ifelse(
+        (is.na(original_t_high) != is.na(new_t_high)) | (!is.na(original_t_high) & original_t_high != new_t_high),
+        new_t_high, HighThreshold
+      ),
       ActionNeededDate = ifelse(!is.na(actionNeeded), Sys.Date(), NA),
       QuantileDate = ifelse(!is.na(actionNeeded), Sys.Date(), QuantileDate),
       QuantileSource = ifelse(!is.na(actionNeeded), qSourceText, QuantileSource)
-      )]
+    )]
+  } else {
+    # Add new row
+    new_entry <- data.table(
+      ThresholdID = t_id,
+      ParameterID = qs2[ThresholdID==t_id, ParameterID],
+      Habitat = qs2[ThresholdID==t_id, Habitat],
+      IndicatorID = qs2[ThresholdID==t_id, IndicatorID],
+      IndicatorName = qs2[ThresholdID==t_id, IndicatorName],
+      CombinedTable = combinedTable,
+      ParameterName = new_param,
+      Units = updatedUnits,
+      ActionNeeded = actionNeeded,
+      LowQuantile = new_q_low,
+      HighQuantile = new_q_high,
+      LowThreshold = new_t_low,
+      HighThreshold = new_t_high,
+      ActionNeededDate = ifelse(!is.na(actionNeeded), Sys.Date(), NA),
+      QuantileDate = ifelse(!is.na(actionNeeded), Sys.Date(), NA),
+      QuantileSource = ifelse(!is.na(actionNeeded), qSourceText, NA),
+      AdditionalComments = paste0("Added as a new parameter on ", Sys.Date()),
+      Calculated = 0,
+      isSpeciesSpecific = 0
+    )
+    # Append new row
+    updatedTable <- rbind(updatedTable, new_entry, fill = TRUE)
+  }
 }
 results_table$ActionNeededDate <- as.Date(results_table$ActionNeededDate)
 updatedTable$QuantileDate <- as.Date(updatedTable$QuantileDate)
 updatedTable$ActionNeededDate <- as.Date(updatedTable$ActionNeededDate)
-
-# Remove BB & P/A from Quantiles
-results_table[
-  OriginalParameterName %in% c("Braun Blanquet Score", 
-                               "Modified Braun Blanquet Score", 
-                               "Presence/Absence"),
-  `:=` (NewLowQuantile = NA, NewHighQuantile = NA, ActionNeeded = NA)]
 
 # Setting headerstyle and creating "Difference Overview" workbook output
 wb <- createWorkbook()
@@ -1378,6 +1486,7 @@ updatedTable[
     AdditionalComments = paste0(Habitat, " - ", ParameterName, " not included in SEACAR data export tables"))]
 
 # Exclude Braun Blanquet (+Modified) & Presence/Absence from Quantile results
+# No longer necessary but a final check to ensure quantiles are not relayed when not needed
 updatedTable[ParameterName %in% c("Braun Blanquet Score", 
                                   "Modified Braun Blanquet Score", 
                                   "Presence/Absence"),
@@ -1411,4 +1520,4 @@ writeData(wb, sheet = 1, "", startRow=3)
 writeData(wb, sheet = 1, updatedTable[, ..cols1], startRow=7)
 writeData(wb, sheet = 1, updatedTable[, ..cols2], startRow=7, startCol=19)
 saveWorkbook(wb, here::here(output_file_date), overwrite = T)
-saveWorkbook(wb, here::here(output_file), overwrite = T)
+if(overwrite_final){saveWorkbook(wb, here::here(output_file), overwrite = T)}

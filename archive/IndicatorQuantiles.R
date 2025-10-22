@@ -38,6 +38,8 @@ options(scipen = 999) #prevent scientific notation in outputs
 #   # file.remove(z)
 # }
 
+source("seacar_data_location.R")
+
 #Set quantile and number of standard deviation values that should be used
 quant_low <- 0.001
 quant_high <- 0.999
@@ -53,8 +55,8 @@ ref_info <- file.info(reffilepath)
 warning(paste0("The supplied ref. file (", reffilename, ") was created ", ref_info$ctime, " and last modified ", ref_info$mtime, ". Proceed if you are sure this is the most up-to-date version."))
 
 #Specify GitHub user info
-github_user = "srdurham"
-github_email = "stephen.durham@floridadep.gov"
+github_user = "tylerhill122"
+github_email = "tyler.hill@floridadep.gov"
 
 #Get current script git commit and path, and create a version label
 gitcommit_script <- system("git rev-list HEAD -1 IndicatorQuantiles.R", intern=TRUE) #NOTE: this command only looks within the current branch (assumes the user is already using 'main').
@@ -68,7 +70,7 @@ scriptversion <- paste0(scriptname, ", Git Commit ID: ", gitcommit_script)
 # options(future.globals.maxSize = 6291456000) #only necessary if using the parallel processing version of the script
 
 #List data files
-seacardat <- list.files(here::here("SEACARdata"), full.names = TRUE, pattern = ".txt")
+seacardat <- list.files(here::here(seacar_data_location), full.names = TRUE, pattern = ".txt")
 
 #Set which parameters to skip (if needed)
 parstoskip <- c()
@@ -101,8 +103,9 @@ spec_dat[, `:=` (rowcode = paste0(.id, RowID), Habitat = fcase(.id == "sav", "Su
 isspspec <- spec_dat[CommonIdentifier %in% c("Total seagrass", "Total SAV") & ParameterName %in% c("Percent Cover", "Percent Occurrence"), ]
 isspspec_habs <- unique(isspspec$Habitat)
 
-spec_dat2 <- merge(spec_dat[!(rowcode %in% isspspec$rowcode), ], refdat[Calculated == 0 & isSpeciesSpecific == 0 & is.na(QuadSize_m2) & IndicatorName != "Grazers and Reef Dependent Species", -c("QuadSize_m2")], by = c("Habitat", "ParameterName"), all.x = TRUE)
-spec_dat2[ParameterName %in% c("Count", "Presence/Absence", "Standard Length") & SpeciesGroup1 %in% c("Grazers and reef dependent species", "Reef Fish"), `:=` (IndicatorID = 11, 
+spec_dat2 <- merge(spec_dat[!(rowcode %in% isspspec$rowcode), ], refdat[Calculated == 0 & isSpeciesSpecific == 0 & is.na(QuadSize_m2) & IndicatorName != "Grazers and Reef Dependent Species", -c("QuadSize_m2")], 
+                   by = c("Habitat", "ParameterName", "IndicatorID", "IndicatorName", "ParameterID"), all.x = TRUE)
+spec_dat2[ParameterName %in% c("Count", "Presence/Absence", "Standard Length") & SpeciesGroup1 %in% c("Grazers and reef dependent species", "Reef fish"), `:=` (IndicatorID = 11, 
                                                                                                                                                                 IndicatorName = "Grazers and Reef Dependent Species", 
                                                                                                                                                                 ParameterID = fcase(ParameterName == "Count", 46,
                                                                                                                                                                                     ParameterName == "Presence/Absence", 47,
@@ -114,9 +117,9 @@ spec_dat2[ParameterName %in% c("Count", "Presence/Absence", "Standard Length") &
 #This merging step could be simplified if there was a row in the refdat table for coral percent cover with isSpeciesSpecific == 1 to cover the records in the coral export that have CommonIdentifier == "Total SAV" or "Total seagrass".
 for(h in isspspec_habs){
   if(h == "Submerged Aquatic Vegetation"){
-    spec_dat2b <- merge(spec_dat[rowcode %in% isspspec$rowcode & Habitat == h, ], refdat[Calculated == 0 & isSpeciesSpecific == 1 & is.na(QuadSize_m2) & Habitat == h, -c("QuadSize_m2", "Habitat")], by = c("ParameterName"), all.x = TRUE)
+    spec_dat2b <- merge(spec_dat[rowcode %in% isspspec$rowcode & Habitat == h, ], refdat[Calculated == 0 & isSpeciesSpecific == 1 & is.na(QuadSize_m2) & Habitat == h, -c("QuadSize_m2", "Habitat")], by = c("ParameterName","ParameterID","IndicatorID","IndicatorName"), all.x = TRUE)
   } else{
-    spec_dat2b <- merge(spec_dat[rowcode %in% isspspec$rowcode & Habitat == h, ], refdat[Calculated == 0 & is.na(QuadSize_m2) & Habitat == h, -c("QuadSize_m2", "Habitat")], by = c("ParameterName"), all.x = TRUE)
+    spec_dat2b <- merge(spec_dat[rowcode %in% isspspec$rowcode & Habitat == h, ], refdat[Calculated == 0 & is.na(QuadSize_m2) & Habitat == h, -c("QuadSize_m2", "Habitat")], by = c("ParameterName","ParameterID","IndicatorID","IndicatorName"), all.x = TRUE)
   }
   spec_dat2 <- rbind(spec_dat2, spec_dat2b)
 }
@@ -165,7 +168,8 @@ qs <- data.table(primaryHab = character(),
                  export = character())
 
 pars <- data.table(file = character(),
-                   param = character())
+                   param = character(),
+                   paramID = numeric())
 
 # Build new quantiles summary data----------------------------------------------------------------
 # qs <- foreach(file = seacardat_forit, .combine = rbind) %dofuture% { #uncomment for parallel use
@@ -225,7 +229,8 @@ for(file in seacardat_forit){ #comment for parallel use
       #Keep track of the parameter and the export file it came from
       lapply(cont_dat, function(x){
         pars_f <- data.table(file = unique(x$export),
-                             param = unique(x$ParameterName))
+                             param = unique(x$ParameterName),
+                             paramID = unique(x$ParameterID))
         pars <<- rbind(pars, pars_f)
       })
       
@@ -242,7 +247,8 @@ for(file in seacardat_forit){ #comment for parallel use
       #Keep track of the parameter and the export file it came from
       lapply(cont_dat, function(x){
         pars_f <- data.table(file = unique(x$export),
-                             param = unique(x$ParameterName))
+                             param = unique(x$ParameterName),
+                             paramID = unique(x$ParameterID))
         pars <<- rbind(pars, pars_f)
       })
     }
@@ -250,7 +256,7 @@ for(file in seacardat_forit){ #comment for parallel use
     #Combine the loaded data tables and add the Habitat and 'refdat' columns
     cont_dat <- rbindlist(cont_dat)
     cont_dat[, Habitat := "Water Column"]
-    cont_dat <- merge(cont_dat, refdat[CombinedTable == "Continuous WQ" & ParameterName %in% unique(cont_dat$ParameterName), ], by = c("Habitat", "ParameterName"), all.x = TRUE)
+    cont_dat <- merge(cont_dat, refdat[CombinedTable == "Continuous WQ" & ParameterName %in% unique(cont_dat$ParameterName), ], by = c("Habitat", "ParameterName","ParameterID","IndicatorName","IndicatorID"), all.x = TRUE)
     
     #Calculate quantile and standard deviation results for each parameter
     for(par in unique(cont_dat$ParameterName)){
@@ -322,13 +328,19 @@ for(file in seacardat_forit){ #comment for parallel use
     dat[, Habitat := "Water Column"]
     
     #Merge refdat variables with the data file separately by calculated versus uncalculated, then recombine
-    dat1 <- merge(dat[str_detect(SEACAR_QAQCFlagCode, "1Q", negate = TRUE), ], refdat[CombinedTable == "Discrete WQ" & Calculated == 0 & ParameterName %in% unique(dat$ParameterName), ], by = c("Habitat", "ParameterName"))
-    dat2 <- merge(dat, refdat[CombinedTable == "Discrete WQ" & Calculated == 1 & ParameterName %in% unique(dat$ParameterName), ], by = c("Habitat", "ParameterName"))
+    # ParameterNames in refdat are outdated for Discrete, removed ParameterName from 'merge by' conditions
+    dat1 <- merge(dat[str_detect(SEACAR_QAQCFlagCode, "1Q", negate = TRUE), ], 
+                  refdat[CombinedTable == "Discrete WQ" & Calculated == 0 & ParameterID %in% unique(dat$ParameterID), -c("ParameterName")], 
+                  by = c("Habitat", "ParameterID", "IndicatorName", "IndicatorID"))
+    dat2 <- merge(dat, 
+                  refdat[CombinedTable == "Discrete WQ" & Calculated == 1 & ParameterID %in% unique(dat$ParameterID), -c("ParameterName")], 
+                  by = c("Habitat", "ParameterID", "IndicatorName", "IndicatorID"))
     dat <- rbind(dat1, dat2)
     
     #Record the parameters in the data file to 'pars' object
     pars_f <- data.table(file = file_short,
-                         param = dat[!is.na(ResultValue), unique(ParameterName)])
+                         param = dat[!is.na(ResultValue), unique(ParameterName)],
+                         paramID = dat[!is.na(ResultValue), unique(ParameterID)])
     pars <- rbind(pars, pars_f)
     
     #Calculate quantile and standard deviation results for each parameter
@@ -487,7 +499,8 @@ for(file in seacardat_forit){ #comment for parallel use
     
     #Record parameters in the 'pars' object
     pars_f <- data.table(file = file_short,
-                         param = dat[.id == "cw" & !is.na(ResultValue), unique(ParameterName)])
+                         param = dat[.id == "cw" & !is.na(ResultValue), unique(ParameterName)],
+                         paramID = dat[.id == "cw" & !is.na(ResultValue), unique(ParameterID)])
     pars <- rbind(pars, pars_f)
     
     #Calculate quantile and standard deviation results for each parameter
@@ -576,7 +589,8 @@ for(file in seacardat_forit){ #comment for parallel use
     
     #Record parameters in the 'pars' object
     pars_f <- data.table(file = file_short,
-                         param = dat[.id == "coral" & !is.na(ResultValue), unique(ParameterName)])
+                         param = dat[.id == "coral" & !is.na(ResultValue), unique(ParameterName)],
+                         paramID = dat[.id == "coral" & !is.na(ResultValue), unique(ParameterID)])
     pars <- rbind(pars, pars_f)
     
     #Calculate quantile and standard deviation results for each parameter
@@ -588,7 +602,7 @@ for(file in seacardat_forit){ #comment for parallel use
       parid <- dat[.id == "coral" & ParameterName == par & IndicatorName != "Grazers and Reef Dependent Species", unique(ParameterID)]
       
       #Calculate quantiles/SDs for data subset from Coral species groups
-      dat_par <- dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & str_detect(SpeciesGroup1, "Coral|Cyanobacteria|Milleporans|Octocoral|Porifera|Scleractinian|Zoanthid"), 
+      dat_par <- dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & str_detect(SpeciesGroup1, "Coral|Cyanobacteria|Milleporans|Octocorals|Porifera|Scleractinians|Zoanthids"), 
                      .(habitat = list(unique(Habitat)),
                        combinedTable = list(unique(CombinedTable)),
                        indicatorID = list(unique(IndicatorID)),
@@ -656,7 +670,8 @@ for(file in seacardat_forit){ #comment for parallel use
     
     #Record parameters in the 'pars' object
     pars_f <- data.table(file = file_short,
-                         param = dat[.id == "nekton" & !is.na(ResultValue), unique(ParameterName)])
+                         param = dat[.id == "nekton" & !is.na(ResultValue), unique(ParameterName)],
+                         paramID = dat[.id == "nekton" & !is.na(ResultValue), unique(ParameterID)])
     pars <- rbind(pars, pars_f)
     
     #Calculate quantile and standard deviation results for each parameter
@@ -715,8 +730,8 @@ for(file in seacardat_forit){ #comment for parallel use
       #get "Grazers and Reef Dependent Species" parameter ID
       parid <- dat[.id == "coral" & ParameterName == par & IndicatorName == "Grazers and Reef Dependent Species", unique(ParameterID)]
       
-      #Calculate quantiles/SDs for data subset from only the "Grazers and reef dependent species" and "Reef Fish" species groups
-      dat_par2 <- dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & SpeciesGroup1 %in% c("Grazers and reef dependent species", "Reef Fish"), .(habitat = list(unique(Habitat)),
+      #Calculate quantiles/SDs for data subset from only the "Grazers and reef dependent species" and "Reef fish" species groups
+      dat_par2 <- dat[ParameterName == par & !is.na(ResultValue) & MADup == 1 & SpeciesGroup1 %in% c("Grazers and reef dependent species", "Reef fish"), .(habitat = list(unique(Habitat)),
                                                                                                                                                            combinedTable = list(unique(CombinedTable)),
                                                                                                                                                            indicatorID = list(unique(IndicatorID)),
                                                                                                                                                            indicatorName = list(unique(IndicatorName)),
@@ -785,13 +800,14 @@ for(file in seacardat_forit){ #comment for parallel use
     dat[, Habitat := "Oyster/Oyster Reef"]
     
     #Merge refdat columns into the oyster data.table, but only include "QuadSize_m2" as a grouping variable for the 'number of oysters counted...' and 'shell height' variables
-    dat1 <- merge(dat, refdat[CombinedTable == "Oyster" & ParameterID %in% c(26, 51, 27), -c("QuadSize_m2")], by = c("Habitat", "ParameterName"))
-    dat2 <- merge(dat, refdat[CombinedTable == "Oyster" & !(ParameterID %in% c(26, 51, 27)), ], by = c("Habitat", "ParameterName", "QuadSize_m2"))
+    dat1 <- merge(dat, refdat[CombinedTable == "Oyster" & ParameterID %in% c(26, 51, 27), -c("QuadSize_m2")], by = c("Habitat", "ParameterName", "ParameterID","IndicatorName","IndicatorID"))
+    dat2 <- merge(dat, refdat[CombinedTable == "Oyster" & !(ParameterID %in% c(26, 51, 27)), ], by = c("Habitat", "ParameterName", "QuadSize_m2", "ParameterID","IndicatorName","IndicatorID"))
     dat <- rbind(dat1, dat2)
     
     #Record parameters in the 'pars' object
     pars_f <- data.table(file = file_short,
-                         param = dat[!is.na(ResultValue), unique(ParameterName)])
+                         param = dat[!is.na(ResultValue), unique(ParameterName)],
+                         paramID = dat[!is.na(ResultValue), unique(ParameterID)])
     pars <- rbind(pars, pars_f)
     
     #Calculate quantile and standard deviation results for each parameter
@@ -907,7 +923,8 @@ for(file in seacardat_forit){ #comment for parallel use
     
     #Record parameters in the 'pars' object
     pars_f <- data.table(file = file_short,
-                         param = dat[.id == "sav" & !is.na(ResultValue), unique(ParameterName)])
+                         param = dat[.id == "sav" & !is.na(ResultValue), unique(ParameterName)],
+                         paramID = dat[.id == "sav" & !is.na(ResultValue), unique(ParameterID)])
     pars <- rbind(pars, pars_f)
     
     #Calculate quantile and standard deviation results for each parameter
@@ -1095,7 +1112,8 @@ setcolorder(qs2, c("ThresholdID", "ParameterID", "Habitat", "IndicatorID", "Indi
 setorder(qs2, Habitat, IndicatorName, ParameterName, Calculated, isSpeciesSpecific, QuadSize_m2)
 
 #Get latest git commit ID
-gitcommit <- system("git rev-parse HEAD", intern=TRUE)
+# gitcommit <- system("git rev-parse HEAD", intern=TRUE)
+gitcommit <- "test"
 
 #set variable to keep track of number of differences between new results and reference thresholds file
 nchanges <- 0
