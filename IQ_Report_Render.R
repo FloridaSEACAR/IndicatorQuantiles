@@ -27,7 +27,7 @@ library(dplyr)
 library(git2r)
 
 # Set to TRUE to render IQ Reports for each habitat
-render_reports <- FALSE
+render_reports <- TRUE
 
 # Set to TRUE ONLY when you want to overwrite the final output file (Database_Thresholds.xlsx). 
 # This should ONLY be set to TRUE once new export deliverables have been approved, in preparation to send Database_Thresholds.xlsx to USF
@@ -63,13 +63,6 @@ parstoskip <- c("")
 
 #What are the strings that need to be interpreted as NA values?
 nas <- c("NULL", "NA", "")
-
-#### Temporary to account for addition of new parameters
-# Bring in latest metadata file sent by Claude on 10/20/2025
-# ref_parameters <- setDT(read.xlsx("data/SEACAR_Metadata_20251015.xlsx", sheet = "Ref_QAThresholds", startRow = 7))
-# names(ref_parameters) <- gsub("\\.", "", names(ref_parameters))
-# setnames(ref_parameters, "QuadSizem2", "QuadSize_m2")
-# setnames(ref_parameters, "IsSpeciesSpecific", "isSpeciesSpecific")
 
 reffilepath <- "output/ScriptResults/Database_Thresholds.xlsx"
 ref_parameters <- setDT(read.xlsx(reffilepath, sheet = 1, startRow = 7))
@@ -218,9 +211,10 @@ regions <- c(
 # list of habitats to generate reports for
 habitats <- unique(ref_parameters$Habitat)
 # subset for a given report
-# habitats <- c("Submerged Aquatic Vegetation")
+habitats <- c("Water Column")
 
 # Loop through each habitat ----
+
 tic()
 for(h in habitats){
   
@@ -243,7 +237,7 @@ for(h in habitats){
       qs_dat <- table_template()
       
       data <- fread(file, sep='|', na.strings = nas)
-      data <- data[Include==1 & MADup==1 & !is.na(ResultValue) & 
+      data <- data[Include==1 & !is.na(ResultValue) & 
                      SpeciesGroup1 %in% c("Grazers and reef dependent species", "Reef fish"), ]
       
       # Record parameter name and units
@@ -334,7 +328,7 @@ for(h in habitats){
         file_short <- tail(str_split(file, "/")[[1]], 1)
         
         data <- fread(file, sep='|', na.strings = nas)
-        data <- data[Include==1 & MADup==1 & !is.na(ResultValue), ]
+        data <- data[Include==1 & !is.na(ResultValue), ]
         
         if(nrow(data)==0){
           cat("No data detected within filename:", file_short, "\n")
@@ -503,7 +497,7 @@ for(h in habitats){
                 dplyr::summarise(n_tot = n(), .groups = "keep")
               p_count$typeName <- type_name
               
-              dat_par <- data[ParameterName==p & !is.na(ResultValue) & MADup == 1 & Include == 1,
+              dat_par <- data[ParameterName==p & !is.na(ResultValue) & Include == 1,
                               .(ParameterID = param_id,
                                 ParameterName = p,
                                 ParameterUnits = param_units,
@@ -591,7 +585,7 @@ for(h in habitats){
           
           # Read in data file
           data <- fread(file, sep='|', na.strings = nas)
-          data <- data[Include==1 & MADup==1 & !is.na(ResultValue), ]
+          data <- data[Include==1 & !is.na(ResultValue), ]
           
           # Record region name as column "region"
           data$region <- region
@@ -701,7 +695,7 @@ for(h in habitats){
     
     # load in habitat data
     data <- fread(file, sep="|", na.strings = nas)
-    data <- data[Include==1 & MADup==1 & !is.na(ResultValue), ]
+    data <- data[Include==1 & !is.na(ResultValue), ]
     
     qs_dat <- table_template()
     
@@ -804,7 +798,7 @@ for(h in habitats){
     data <- fread(file, sep="|", na.strings = nas)
     # 06-12-25 SEACAR Expanded boundaries, no longer subsetting data by ManagedArea
     # Quantiles are Performed on entire dataset
-    data <- data[Include==1 & MADup==1 & !is.na(ResultValue), ]
+    data <- data[Include==1 & !is.na(ResultValue), ]
     
     # Adjustments to quad size & other temporary fixes
     data[ProgramID == 4042 & is.na(QuadSize_m2), QuadSize_m2 := fcase(SampleDate == as_date("2014-06-11"), 1,
@@ -993,7 +987,7 @@ for(h in habitats){
     
     # load in habitat data
     data <- fread(file, sep="|", na.strings = nas)
-    data <- data[Include==1 & MADup==1 & !is.na(ResultValue), ]
+    data <- data[Include==1 & !is.na(ResultValue), ]
     
     qs_dat <- table_template()
     
@@ -1098,7 +1092,7 @@ for(h in habitats){
     # load in habitat data
     # NOTE: Coral is imported without NA strings to allow "NULL" subsetting in SG1
     data <- fread(file, sep="|")
-    data <- data[Include==1 & MADup==1 & !is.na(ResultValue), ]
+    data <- data[Include==1 & !is.na(ResultValue), ]
     
     qs_dat <- table_template()
     

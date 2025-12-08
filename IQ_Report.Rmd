@@ -205,9 +205,9 @@ if(h=="Water Column"){
 \newpage
 # Summary Tables
 
-*q_low*: Value corresponding to the qval_low quantile for the parameter in the DDI export.  
+*q_low*: Value corresponding to the low quantile for the parameter in the DDI export.  
 
-*q_high*: Value corresponding to the qval_high quantile for the parameter in the DDI export.  
+*q_high*: Value corresponding to the high quantile for the parameter in the DDI export.  
 
 *mean*: Mean value for the parameter in the DDI export.  
 
@@ -601,8 +601,11 @@ wc_program_table <- function(hab, type, i, p){
     cat("  \n")
     cat("  \n")
   } else {
+    subtitle <- glue("### {p}")
+    cat("\n\n")
+    cat(subtitle, "\n\n")
     cat("  \n")
-    cat(paste0("There are no *", str_to_title(quantile) ,"* Quantile Flagged Values for ", p))
+    cat(paste0("There are no Quantile Flagged Values for ", p))
     cat("  \n")
   }
 }
