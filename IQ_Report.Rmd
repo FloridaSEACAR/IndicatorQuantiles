@@ -245,13 +245,13 @@ if(h=="Water Column"){
       names(table_data) <- gsub("_"," ",names(table_data))
       
       table_display <- kable(table_data,
-                             format="simple",
+                             format="latex",
                              caption="Indicator Quantile Overview",
                              digits = 2) %>%
-        kable_styling(latex_options="scale_down",
+        kable_styling(latex_options=c("scale_down", "HOLD_position"),
                       position = "center")
     
-      print(table_display)  
+      cat(table_display)
       
       cat("\n\n")
     }
@@ -261,7 +261,7 @@ if(h=="Water Column"){
   
   # Latex format for longer oyster parameter names (quadsize included)
   # table_format <- ifelse(h=="Oyster/Oyster Reef", "latex", "simple")
-  table_format <- "simple"
+  table_format <- "latex"
   
   if(h=="Oyster/Oyster Reef"){
     select_columns <- c("ParameterName", "QuadSize_m2", "q_low", "q_high", "mean", "n_tot", "n_q_low", "n_q_high")
@@ -290,7 +290,7 @@ if(h=="Water Column"){
                     position = "center")
     
     if(nrow(table_data)>0){
-      print(table_display)  
+      cat(table_display)
     }
     
     cat("\n\n")

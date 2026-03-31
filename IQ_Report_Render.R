@@ -190,28 +190,10 @@ species_group_filtering <- TRUE
 # List to store flagged data for Habitat Water Column
 wq_flagged_data_list <- list()
 
-# Select which continuous parameters to include:
-all_params <- c(
-  "Dissolved Oxygen",
-  "Dissolved Oxygen Saturation",
-  "pH",
-  "Salinity",
-  "Turbidity",
-  "Water Temperature"
-)
-
-# Select which regions to include Continuous data for
-regions <- c(
-  "NE",
-  "NW",
-  "SE",
-  "SW"
-)
-
 # list of habitats to generate reports for
 habitats <- unique(ref_parameters$Habitat)
 # subset for a given report
-habitats <- c("Water Column")
+# habitats <- c("Water Column")
 
 # Loop through each habitat ----
 
@@ -332,7 +314,7 @@ for(h in habitats){
         
         if(nrow(data)==0){
           cat("No data detected within filename:", file_short, "\n")
-          # param_name <- readline(prompt = "What parameter matches this filename?")
+          # Prompt user to enter parameter name
           param_num <- menu(sort(unique(ref_parameters_original$ParameterName)), title = glue("Enter the # which matches this filename: {file_short}"))
           param_name <- sort(unique(ref_parameters_original$ParameterName))[param_num]
           param_id <- ref_parameters[ParameterName==param_name & CombinedTable=="Discrete WQ", ParameterID]
@@ -564,52 +546,37 @@ for(h in habitats){
       
       cont_dat <- table_template()
       
-      for(p in all_params){
+      for(file in wq_cont_files){
+        # record short file names for display in report
+        file_short <- tail(str_split(file, "/")[[1]], 1)
         
+        # Read in data file
+        data <- fread(file, sep='|', na.strings = nas)
+        data <- data[Include==1 & !is.na(ResultValue), ]
+        p <- unique(data$ParameterName)
         print(paste0("Starting Continuous parameter: ", p))
         
-        par_name <- str_replace_all(p," ","_")
+        # Ensure ValueQualifier column is interpreted as numeric
+        data$ValueQualifier <- as.numeric(data$ValueQualifier)
         
-        data_combined <- list()
-        region_files <- list()
-        
-        for(region in regions){
-          # Pattern used to locate correct Parameter / Region combination
-          pattern <- paste0(par_name,"_",region)
-          
-          file <- str_subset(wq_cont_files, pattern)
-          file_short <- tail(str_split(file, "/")[[1]], 1)
-          
-          # record short file names for display in report
-          region_files <- c(region_files, file_short)
-          
-          # Read in data file
-          data <- fread(file, sep='|', na.strings = nas)
-          data <- data[Include==1 & !is.na(ResultValue), ]
-          
-          # Record region name as column "region"
-          data$region <- region
-          # Ensure ValueQualifier column is interpreted as numeric
-          data$ValueQualifier <- as.numeric(data$ValueQualifier)
-          
-          # combine regional data sets for a given parameter
-          data_combined <- bind_rows(data_combined, data)
+        param_id <- unique(data$ParameterID)
+        param_name <- unique(data$ParameterName)
+        param_units <- unique(data$ParameterUnits)
+        # Grab threshold ID from ref_parameters if available
+        threshold_id <- ref_parameters[ParameterID==param_id & CombinedTable==type_name, ThresholdID]
+        # If threshold_id isn't already assigned, prompt user for it
+        if(length(threshold_id)==0){
+          cat("New parameter detected", "\n")
+          threshold_id <- readline(prompt = glue("Enter New ThresholdID for {param_name} - Continuous: "))
+          threshold_id <- as.numeric(threshold_id)
         }
-        
-        param_id <- unique(data_combined$ParameterID)
-        param_name <- unique(data_combined$ParameterName)
-        param_units <- unique(data_combined$ParameterUnits)
-        threshold_id <- ref_parameters[ParameterID==param_id & CombinedTable==type_name, 
-                                       ThresholdID]
-        
+  
         # Set indicator name for each parameter (WC, WQ, NUT)
-        i <- ref_parameters[ParameterID==param_id & CombinedTable==type_name, 
-                            IndicatorName]
-        i_id <- ref_parameters[ParameterID==param_id & CombinedTable==type_name, 
-                               IndicatorID]
+        i <- unique(data$IndicatorName)
+        i_id <- unique(data$IndicatorID)
         
         # Record data totals by parameter
-        p_count <- data_combined %>%
+        p_count <- data %>%
           dplyr::group_by(ProgramID, ParameterName) %>%
           dplyr::summarise(n_tot = n(), .groups = "keep")
         p_count$typeName <- type_name
@@ -617,31 +584,31 @@ for(h in habitats){
         program_counts <- bind_rows(program_counts, p_count)
         
         # Append file_short to include all file names for WQ
-        file_short_list[[type_name]][[i]][[p]] <- region_files
+        file_short_list[[type_name]][[i]][[p]] <- file_short
         
-        dat_par <- data_combined[ParameterName==p,
-                                 .(ParameterID = param_id,
-                                   ParameterName = param_name,
-                                   ParameterUnits = param_units,
-                                   IndicatorID = i_id,
-                                   IndicatorName = i,
-                                   Habitat = h,
-                                   ThresholdID = threshold_id,
-                                   q_low = quantile(ResultValue, probs = quant_low),
-                                   q_high = quantile(ResultValue, probs = quant_high),
-                                   mean = mean(ResultValue),
-                                   n_tot = length(ResultValue))]
+        dat_par <- data[ParameterName==p,
+                        .(ParameterID = param_id,
+                          ParameterName = param_name,
+                          ParameterUnits = param_units,
+                          IndicatorID = i_id,
+                          IndicatorName = i,
+                          Habitat = h,
+                          ThresholdID = threshold_id,
+                          q_low = quantile(ResultValue, probs = quant_low),
+                          q_high = quantile(ResultValue, probs = quant_high),
+                          mean = mean(ResultValue),
+                          n_tot = length(ResultValue))]
         
         # pull high and low quantiles for filtering
         quant_low_value <- dat_par$q_low
         quant_high_value <- dat_par$q_high
         
         # grab subset of data that falls below quantile limit
-        subset_low <- data_combined[ParameterName==p & ResultValue < quant_low_value, ]
+        subset_low <- data[ParameterName==p & ResultValue < quant_low_value, ]
         subset_low$q_subset <- "low"
         
         # grab subset of data that falls above quantile limit
-        subset_high <- data_combined[ParameterName==p & ResultValue > quant_high_value, ]
+        subset_high <- data[ParameterName==p & ResultValue > quant_high_value, ]
         subset_high$q_subset <- "high"
         
         # combine datasets for display in report
@@ -1282,7 +1249,12 @@ results_table <- data.table()
 for(t_id in unique(qs2$ThresholdID)){
   # Grab combined table name for display in overview
   combinedTable <- ref_parameters[ThresholdID==t_id, unique(CombinedTable)]
-  
+  if(length(combinedTable)==0){
+    cat("New parameter detected", "\n")
+    opts <- unique(ref_parameters$CombinedTable)
+    combinedTable_val <- menu(opts, title = glue("Enter CombinedTable value for ThresholdID ({t_id}): "))
+    combinedTable <- opts[combinedTable_val]
+  }
   # Original_subset and new_subset to compare old and new values
   original_subset <- ref_parameters_original[ThresholdID==t_id, ]
   new_subset <- qs2[ThresholdID==t_id, ]
@@ -1325,6 +1297,8 @@ for(t_id in unique(qs2$ThresholdID)){
   # This accounts for the updated WIN thresholds
   new_t_low <- round(ref_parameters[ThresholdID==t_id, ]$LowThreshold,6)
   new_t_high <- round(ref_parameters[ThresholdID==t_id, ]$HighThreshold,6)
+  if(length(new_t_low)==0) new_t_low <- NA
+  if(length(new_t_high)==0) new_t_high <- NA
   
   # Update actionNeeded column (account for NA values)
   actionNeeded <- ifelse(
