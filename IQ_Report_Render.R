@@ -39,8 +39,8 @@ source("seacar_data_location.R")
 
 # Create output path if it doesn't already exist
 output_path <- c("output","output/data")
-for (path in output_path) {
-  if (!dir.exists(path)){dir.create(path, recursive = TRUE)}
+for(path in output_path){
+  if(!dir.exists(path)){dir.create(path, recursive = TRUE)}
 }
 
 #List data files
@@ -102,12 +102,12 @@ threshold_mapping <- list(
 )
 
 # Function to get the thresholds and log changes if they differ
-get_thresholds_and_log_changes <- function(param_info) {
+get_thresholds_and_log_changes <- function(param_info){
   factor <- param_info$factor %||% 1 # Default factor is 1 if not specified
   sheet <- param_info$sheet %||% NULL
   activity_type <- param_info$activity_type %||% NULL
   
-  if (!is.null(sheet)) {
+  if(!is.null(sheet)){
     win_thresholds_wt <- setDT(read.xlsx(win_threshold_path, sheet = sheet, startRow = 3))
     thresholds <- win_thresholds_wt[AnalyteName == param_info$analyte & Activity.Type == activity_type]
   } else {
@@ -199,9 +199,7 @@ habitats <- unique(ref_parameters$Habitat)
 
 tic()
 for(h in habitats){
-  
   if(h=="Water Column"){
-    
     # list to store shortened file names to display in report
     file_short_list <- list()
     water_column_summary_directory <- list()
@@ -237,8 +235,7 @@ for(h in habitats){
       program_counts <- bind_rows(program_counts, p_count)
       
       # Nekton Processing
-      for (p_id in param_ids){
-        
+      for(p_id in param_ids){
         p <- ref_parameters[ParameterID==p_id & IndicatorID==i_id, ParameterName]
         threshold_id <- ref_parameters[ParameterID==p_id & CombinedTable==type_name, 
                                        ThresholdID]
@@ -314,8 +311,14 @@ for(h in habitats){
         
         if(nrow(data)==0){
           cat("No data detected within filename:", file_short, "\n")
-          # Prompt user to enter parameter name
-          param_num <- menu(sort(unique(ref_parameters_original$ParameterName)), title = glue("Enter the # which matches this filename: {file_short}"))
+          # Prompt user to enter parameter name (auto detection of 'Ammonia, Un-ionized' and 'FDOM')
+          if(str_detect(file_short, "Ammonia, Un")){
+            param_num <- 1
+          } else if(str_detect(file_short, "Fluorescent")){
+            param_num <- 17
+          } else {
+            param_num <- menu(sort(unique(ref_parameters_original$ParameterName)), title = glue("Enter the # which matches this filename: {file_short}"))
+          }
           param_name <- sort(unique(ref_parameters_original$ParameterName))[param_num]
           param_id <- ref_parameters[ParameterName==param_name & CombinedTable=="Discrete WQ", ParameterID]
           param_units <- ref_parameters[ParameterName==param_name & CombinedTable=="Discrete WQ", Units]
@@ -348,7 +351,7 @@ for(h in habitats){
                                                       Units = param_units)]
         }
         
-        for (p in param_name){
+        for(p in param_name){
           if(p %in% parstoskip){next}
           # Grab pre-existing threshold id value if available
           threshold_id <- ref_parameters[ParameterID==param_id & CombinedTable==type_name, ThresholdID]
@@ -410,7 +413,7 @@ for(h in habitats){
             
             dat_par <- rbind(dat_par_all, dat_par_nocalc)
             
-            for (sub_param in unique(dat_par$sub_parameter)){
+            for(sub_param in unique(dat_par$sub_parameter)){
               
               if(sub_param == "Calculated"){
                 sub_data <- data[str_detect(SEACAR_QAQCFlagCode, "1Q", negate = TRUE), ]
@@ -556,6 +559,12 @@ for(h in habitats){
         p <- unique(data$ParameterName)
         print(paste0("Starting Continuous parameter: ", p))
         
+        ##### Temporary to remove RFU values from CHLA exports
+        if(p=="Chlorophyll a, Uncorrected for Pheophytin"){
+          data <- data[!(Year==2026 & ProgramID==4054), ]
+        }
+        #####
+        
         # Ensure ValueQualifier column is interpreted as numeric
         data$ValueQualifier <- as.numeric(data$ValueQualifier)
         
@@ -668,11 +677,9 @@ for(h in habitats){
     
     flagged_data_list <- list()
     
-    for (i in indicators){
-      
+    for(i in indicators){
       # unique threshold_ids included for each indicator/habitat combo
       threshold_ids <- ref_parameters[Habitat==h & IndicatorName==i, unique(ThresholdID)]
-      
       for(threshold_id in threshold_ids){
         isSpeciesSpecific <- ref_parameters[ThresholdID==threshold_id, isSpeciesSpecific]
         if(isSpeciesSpecific){
@@ -722,12 +729,10 @@ for(h in habitats){
         # Add n_q_low and n_q_high to dat_par table
         dat_par$n_q_low <- nrow(subset_low)
         dat_par$n_q_high <- nrow(subset_high)
-        
         dat_par[ , c('sub_parameter', 'QuadSize_m2')] = NA
         
         # append to make long-form table
         qs_dat <- rbind(qs_dat, dat_par)
-        
       }
     }
     
@@ -754,10 +759,8 @@ for(h in habitats){
   
   if(h=="Oyster/Oyster Reef"){
     file <- str_subset(seacardat, "All_OYSTER")
-    
     # shortened filename for display in report
     file_short <- tail(str_split(file, "/")[[1]], 1)
-    
     # get list of indicators within a given habitat
     indicators <- ref_parameters[Habitat==h, unique(IndicatorName)]
     
@@ -779,14 +782,11 @@ for(h in habitats){
     
     flagged_data_list <- list()
     
-    for (i in indicators){
+    for(i in indicators){
       i_id <- ref_parameters[Habitat==h & IndicatorName==i, IndicatorID]
-      
       # unique parameters included for each indicator/habitat combo
       threshold_ids <- ref_parameters[Habitat==h & IndicatorName==i, unique(ThresholdID)]
-      
       qs_dat <- table_template()
-      
       for(t_id in threshold_ids){
         p <- ref_parameters[ThresholdID==t_id, ParameterName]
         param_id <- ref_parameters[ThresholdID==t_id, ParameterID]
@@ -960,22 +960,19 @@ for(h in habitats){
     
     flagged_data_list <- list()
     
-    for (i in indicators){
-      
+    for(i in indicators){
       # unique parameters included for each indicator/habitat combo
       parameters <- ref_parameters[Habitat==h & IndicatorName==i, unique(ParameterName)]
       
       #Sg1 for Coastal Wetlands
       sg1_include <- c("Mangroves and associates","Marsh","Invasives")
       
-      for (p in parameters){
-        
+      for(p in parameters){
         if(p=="Total/Canopy Percent Cover"){
           indicator_data <- data
         } else {
           indicator_data <- data[SpeciesGroup1 %in% sg1_include, ]
         }
-        
         # Grab relevant IDs for each parameter
         param_id <- ref_parameters[Habitat==h & ParameterName==p & IndicatorName==i, ParameterID]
         threshold_id <- ref_parameters[Habitat==h & ParameterName==p & IndicatorName==i, ThresholdID]
@@ -1047,12 +1044,9 @@ for(h in habitats){
   }
   
   if(h=="Coral/Coral Reef"){
-    
     file <- str_subset(seacardat, "All_CORAL")
-    
     # shortened filename for display in report
     file_short <- tail(str_split(file, "/")[[1]], 1)
-    
     # get list of indicators within a given habitat
     indicators <- ref_parameters[Habitat==h, unique(IndicatorName)]
     
@@ -1065,37 +1059,35 @@ for(h in habitats){
     
     flagged_data_list <- list()
     
-    for (i in indicators){
-      
+    for(i in indicators){
       # unique parameters included for each indicator/habitat combo
       parameters <- ref_parameters[Habitat==h & IndicatorName==i, unique(ParameterName)]
-      
       # Filtering for SpeciesGroup1 with indicator/parameter combos
-      if (i=="Grazers and Reef Dependent Species"){
+      if(i=="Grazers and Reef Dependent Species"){
         sg1_include <- c("Grazers and reef dependent species","Reef fish")
       }
       
-      if (i=="Community Composition"){
+      if(i=="Community Composition"){
         # SG1 for "Count", add additional for PA and Colony Density
         sg1_include <- c("Corallimorpharians", "Milleporans", "Octocorals", "Others", "Porifera", "Scleractinians", "NULL")
-        if (p=="Presence/Absence"){
+        if(p=="Presence/Absence"){
           sg1_include <- c(sg1_include, "Cyanobacteria", "Macroalgae", "Zoanthids")
         }
-        if (p=="Colony Density"){
+        if(p=="Colony Density"){
           sg1_include <- c(sg1_include, "Cyanobacteria", "Macroalgae", "Zoanthids", "Substrate")
         }
       }
       
-      if (i == "Percent Cover"){
+      if(i == "Percent Cover"){
         # SG1 for "Colony..."
         sg1_include <- c("Corallimorpharians", "Milleporans", "Octocorals", "Others", "Porifera", "Scleractinians", "NULL")
-        if (p=="Percent Cover"){
+        if(p=="Percent Cover"){
           sg1_include <- c(sg1_include, "Cyanobacteria", "Macroalgae", "Zoanthids", "Substrate", "Seagrass")
         }
-        if (p=="Percent Live Tissue"){
+        if(p=="Percent Live Tissue"){
           sg1_include <- c(sg1_include, "Zoanthids")
         }
-        if (p=="Presence/Absence"){
+        if(p=="Presence/Absence"){
           sg1_include <- "Seagrass"
         }
       }
@@ -1108,8 +1100,7 @@ for(h in habitats){
         indicator_data <- data
       }
       
-      for (p in parameters){
-        
+      for(p in parameters){
         # Grab relevant IDs for each parameter
         param_id <- ref_parameters[Habitat==h & ParameterName==p & IndicatorName==i, ParameterID]
         threshold_id <- ref_parameters[Habitat==h & ParameterName==p & IndicatorName==i, ThresholdID]
@@ -1186,27 +1177,9 @@ toc()
 summary_table <- bind_rows(bind_rows(water_column_summary_directory) %>% unique(), 
                            qs %>% unique())
 
-# Dataframe to use within add_buffer function below
-# Adds a buffer of +/- 0.000001 to quantile values at high or low thresholds
-buffered_params <- data.table(
-  parameter = c("Braun Blanquet Score","Modified Braun Blanquet Score",
-                "Presence/Absence","Percent Cover","Percent Occurrence",
-                "Percent Live","Percent Live Tissue"),
-  max_thresh = c(5,5,1,100,100,100,100),
-  min_thresh = c(0,0,0,0,0,0,0))
-
-# Function to provide buffer to selected values (listed above)
-# i.e., alter Braun Blanquet q_high of 5 to 5.000001
-add_buffer <- function(value, param, quantile){
-  if(param %in% buffered_params$parameter){
-    if(quantile=="high"){
-      max_val <- buffered_params[parameter==param, max_thresh]
-      new_val <- ifelse(value==max_val, value+0.000001, value)
-    }
-    return(new_val)
-  } else {
-    return(value)
-  }
+# Function to add a buffer of +/- 0.000001 to quantile values at high or low thresholds
+add_buffer <- function(value, quantile){
+  return(value + ifelse(quantile=="high", 0.000001, -0.000001))
 }
 
 # Make a copy of summary_table
@@ -1214,8 +1187,8 @@ add_buffer <- function(value, param, quantile){
 # Prepare for display in excel workbook
 qs2 <- summary_table %>%
   dplyr::rowwise() %>%
-  dplyr::mutate(q_high = add_buffer(q_high, ParameterName, "high"),
-                q_low = ifelse(q_low==0, -0.000001, q_low),
+  dplyr::mutate(q_high = add_buffer(q_high, "high"),
+                q_low = add_buffer(q_low, "low"),
                 sub_parameter = ifelse(ThresholdID==ref_parameters_original[Calculated==1, ThresholdID], 1, 0)) %>%
   dplyr::rename("LowQuantile" = "q_low",
                 "HighQuantile" = "q_high",

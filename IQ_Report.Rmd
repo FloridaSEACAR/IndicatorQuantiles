@@ -14,11 +14,13 @@ output:
     toc: TRUE
     toc_depth: 3
     dev: png
-    extra_dependencies: ["float"]
+    extra_dependencies: ["float", "booktabs"]
     keep_md: yes
 urlcolor: blue
 title: '`r paste0(h," Indicator Quantile Report")`'
 subtitle: 'SEACAR Analysis'
+header-includes:
+  - \usepackage{float}
 ---
 
 ```{r setup, include=FALSE} 
@@ -232,7 +234,7 @@ if(h=="Water Column"){
     
     indicators <- names(data_directory[[h]][[type]])
     
-    for (ind in indicators){
+    for(ind in indicators){
       cat(paste0("*Indicator*: **",ind,"**"))
       cat("\n\n")
     
@@ -242,7 +244,7 @@ if(h=="Water Column"){
         mutate(`pct_flagged` = (n_q_low + n_q_high) / n_tot * 100) %>%
         arrange(ParameterName)
       
-      names(table_data) <- gsub("_"," ",names(table_data))
+      names(table_data) <- gsub("_","-",names(table_data))
       
       table_display <- kable(table_data,
                              format="latex",
@@ -250,7 +252,7 @@ if(h=="Water Column"){
                              digits = 2) %>%
         kable_styling(latex_options=c("scale_down", "HOLD_position"),
                       position = "center")
-    
+      
       cat(table_display)
       
       cat("\n\n")
@@ -269,7 +271,7 @@ if(h=="Water Column"){
     select_columns <- c("ParameterName", "q_low", "q_high", "mean", "n_tot", "n_q_low", "n_q_high")
   }
   
-  for (ind in indicators){
+  for(ind in indicators){
     cat(paste0("*Indicator*: **",ind,"**"))
     cat("\n\n")
     
@@ -292,7 +294,6 @@ if(h=="Water Column"){
     if(nrow(table_data)>0){
       cat(table_display)
     }
-    
     cat("\n\n")
   }
 }
@@ -377,7 +378,7 @@ quantile_table_display <- function(quantile, hab) {
             
             # Print data table
             q_data_table <- kable(q_value_table,
-                                  format="simple",
+                                  format="latex",
                                   digits = 2,
                                   caption=paste0("Flagged Values - ", str_to_title(quantile), " Indicator Quantile: **",
                                                  round(threshold,5),"**")) %>%
@@ -385,7 +386,7 @@ quantile_table_display <- function(quantile, hab) {
                             position = "center")
             
             if(type=="Nekton"){
-              print(q_data_table)
+              cat(q_data_table)
             }
             
             # List programs with flagged data below, with their ID
@@ -489,14 +490,14 @@ quantile_table_display <- function(quantile, hab) {
           
           # Print data table
           q_data_table <- kable(q_value_table,
-                                format="simple",
+                                format="latex",
                                 digits = 2,
                                 caption=paste0("Flagged Values - ", str_to_title(quantile), " Indicator Quantile: **",
                                                round(threshold,5),"**")) %>%
             kable_styling(latex_options="scale_down",
                           position = "center")
           
-          print(q_data_table)
+          cat(q_data_table)
           
           # List programs with flagged data below, with their ID
           cat("\n **Programs containing flagged data:** \n \n")
@@ -581,13 +582,13 @@ wc_program_table <- function(hab, type, i, p){
     
     # Print data table
     program_kable <- kable(program_data %>% select(-"n tot all"),
-                           format="simple",
+                           format="latex",
                            digits = 5,
                            caption=paste0("Flagged data, overview by program for **", p,"**")) %>%
       kable_styling(latex_options="scale_down",
                     position = "center")
     
-    print(program_kable)
+    cat(program_kable)
     
     # List programs with flagged data below, with their ID
     cat("\n **Programs containing flagged data:** \n \n")
@@ -746,7 +747,7 @@ check_flag <- function(h){
     kable_styling(latex_options=c("scale_down", "HOLD_position"),
                   position = "center")
   
-  print(flag_display_table)
+  cat(flag_display_table)
   
   if(nrow(different_codes)>0){
     cat("  \n")
@@ -763,7 +764,7 @@ check_flag <- function(h){
                     position = "center",
                     font_size = 8)
     
-    print(code_display_table)
+    cat(code_display_table)
     cat("  \n")
     for(desc in unique(different_codes$SEACAR_QAQC_Description)){
       cat(paste0("* ",desc))
