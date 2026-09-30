@@ -35,7 +35,7 @@ render_reports <- TRUE
 overwrite_final <- FALSE
 
 # import "seacar_data_location" variable which points to data directory
-source("seacar_data_location.R")
+source("../seacar_data_location.R")
 
 # Create output path if it doesn't already exist
 output_path <- c("output","output/data")
@@ -196,10 +196,9 @@ habitats <- unique(ref_parameters$Habitat)
 # habitats <- c("Water Column")
 
 # Loop through each habitat ----
-
 tic()
 for(h in habitats){
-  if(h=="Water Column"){
+  if(str_detect(h, "Water Column")){
     # list to store shortened file names to display in report
     file_short_list <- list()
     water_column_summary_directory <- list()
@@ -554,16 +553,9 @@ for(h in habitats){
         file_short <- tail(str_split(file, "/")[[1]], 1)
         
         # Read in data file
-        data <- fread(file, sep='|', na.strings = nas)
-        data <- data[Include==1 & !is.na(ResultValue), ]
+        data <- fread(file, sep='|', na.strings = nas)[Include==1 & !is.na(ResultValue)]
         p <- unique(data$ParameterName)
-        print(paste0("Starting Continuous parameter: ", p))
-        
-        ##### Temporary to remove RFU values from CHLA exports
-        if(p=="Chlorophyll a, Uncorrected for Pheophytin"){
-          data <- data[!(Year==2026 & ProgramID==4054), ]
-        }
-        #####
+        cat(paste0("Starting Continuous parameter: ", p, "  \n\n"))
         
         # Ensure ValueQualifier column is interpreted as numeric
         data$ValueQualifier <- as.numeric(data$ValueQualifier)
@@ -571,70 +563,144 @@ for(h in habitats){
         param_id <- unique(data$ParameterID)
         param_name <- unique(data$ParameterName)
         param_units <- unique(data$ParameterUnits)
-        # Grab threshold ID from ref_parameters if available
-        threshold_id <- ref_parameters[ParameterID==param_id & CombinedTable==type_name, ThresholdID]
-        # If threshold_id isn't already assigned, prompt user for it
-        if(length(threshold_id)==0){
-          cat("New parameter detected", "\n")
-          threshold_id <- readline(prompt = glue("Enter New ThresholdID for {param_name} - Continuous: "))
-          threshold_id <- as.numeric(threshold_id)
+        
+        # Account for multiple units in Chla
+        if(length(param_id)>1 | length(param_units)>1){
+          for(par_id in param_id){
+            p_unit <- data[ParameterID==par_id, unique(ParameterUnits)]
+            # Grab threshold ID from ref_parameters if available
+            threshold_id <- ref_parameters[ParameterID==par_id & CombinedTable==type_name, ThresholdID]
+            # If threshold_id isn't already assigned, prompt user for it
+            if(length(threshold_id)==0){
+              cat("New parameter detected", "\n")
+              threshold_id <- readline(prompt = glue("Enter New ThresholdID for {param_name} - Continuous - ParameterUnits = {p_unit}: "))
+              threshold_id <- as.numeric(threshold_id)
+            }
+      
+            # Set indicator name for each parameter (WC, WQ, NUT)
+            i <- unique(data$IndicatorName)
+            i_id <- unique(data$IndicatorID)
+            
+            # Record data totals by parameter
+            p_count <- data %>%
+              dplyr::filter(ParameterUnits==p_unit) %>%
+              dplyr::group_by(ProgramID, ParameterName, ParameterID, ParameterUnits) %>%
+              dplyr::summarise(
+                n_tot = n(), 
+                typeName = type_name,
+                .groups = "keep"
+              )
+            
+            program_counts <- bind_rows(program_counts, p_count)
+            
+            # Append file_short to include all file names for WQ
+            file_short_list[[type_name]][[i]][[p]] <- file_short
+            
+            dat_par <- data[ParameterUnits==p_unit,
+                            .(ParameterID = par_id,
+                              ParameterName = param_name,
+                              ParameterUnits = p_unit,
+                              IndicatorID = i_id,
+                              IndicatorName = i,
+                              Habitat = h,
+                              ThresholdID = threshold_id,
+                              q_low = quantile(ResultValue, probs = quant_low),
+                              q_high = quantile(ResultValue, probs = quant_high),
+                              mean = mean(ResultValue),
+                              n_tot = length(ResultValue))]
+            
+            # pull high and low quantiles for filtering
+            quant_low_value <- dat_par$q_low
+            quant_high_value <- dat_par$q_high
+            
+            # grab subset of data that falls below quantile limit
+            subset_low <- data[ParameterName==p & ParameterUnits==p_unit & ResultValue < quant_low_value, ]
+            subset_low$q_subset <- "low"
+            
+            # grab subset of data that falls above quantile limit
+            subset_high <- data[ParameterName==p & ParameterUnits==p_unit & ResultValue > quant_high_value, ]
+            subset_high$q_subset <- "high"
+            
+            # combine datasets for display in report
+            combined_subset <- bind_rows(subset_low, subset_high)
+            
+            # Append the flagged data to data directory
+            wq_flagged_data_list[[type_name]][[i]][[p]] <- combined_subset
+            
+            # Add n_q_low and n_q_high to dat_par table
+            dat_par$n_q_low <- nrow(subset_low)
+            dat_par$n_q_high <- nrow(subset_high)
+            
+            # Record results
+            cont_dat <- rbind(cont_dat, dat_par, fill=TRUE)
+            
+            print(paste0(p, " Continuous processing complete!"))            
+          }
+        } else {
+          # Grab threshold ID from ref_parameters if available
+          threshold_id <- ref_parameters[ParameterID==param_id & CombinedTable==type_name, ThresholdID]
+          # If threshold_id isn't already assigned, prompt user for it
+          if(length(threshold_id)==0){
+            cat("New parameter detected", "\n")
+            threshold_id <- readline(prompt = glue("Enter New ThresholdID for {param_name} - Continuous: "))
+            threshold_id <- as.numeric(threshold_id)
+          }
+          
+          # Set indicator name for each parameter (WC, WQ, NUT)
+          i <- unique(data$IndicatorName)
+          i_id <- unique(data$IndicatorID)
+          
+          # Record data totals by parameter
+          p_count <- data %>%
+            dplyr::group_by(ProgramID, ParameterName, ParameterID, ParameterUnits) %>%
+            dplyr::summarise(n_tot = n(), .groups = "keep")
+          p_count$typeName <- type_name
+          
+          program_counts <- bind_rows(program_counts, p_count)
+          
+          # Append file_short to include all file names for WQ
+          file_short_list[[type_name]][[i]][[p]] <- file_short
+          
+          dat_par <- data[ParameterName==p,
+                          .(ParameterID = param_id,
+                            ParameterName = param_name,
+                            ParameterUnits = param_units,
+                            IndicatorID = i_id,
+                            IndicatorName = i,
+                            Habitat = h,
+                            ThresholdID = threshold_id,
+                            q_low = quantile(ResultValue, probs = quant_low),
+                            q_high = quantile(ResultValue, probs = quant_high),
+                            mean = mean(ResultValue),
+                            n_tot = length(ResultValue))]
+          
+          # pull high and low quantiles for filtering
+          quant_low_value <- dat_par$q_low
+          quant_high_value <- dat_par$q_high
+          
+          # grab subset of data that falls below quantile limit
+          subset_low <- data[ParameterName==p & ResultValue < quant_low_value, ]
+          subset_low$q_subset <- "low"
+          
+          # grab subset of data that falls above quantile limit
+          subset_high <- data[ParameterName==p & ResultValue > quant_high_value, ]
+          subset_high$q_subset <- "high"
+          
+          # combine datasets for display in report
+          combined_subset <- bind_rows(subset_low, subset_high)
+          
+          # Append the flagged data to data directory
+          wq_flagged_data_list[[type_name]][[i]][[p]] <- combined_subset
+          
+          # Add n_q_low and n_q_high to dat_par table
+          dat_par$n_q_low <- nrow(subset_low)
+          dat_par$n_q_high <- nrow(subset_high)
+          
+          # Record results
+          cont_dat <- rbind(cont_dat, dat_par, fill=TRUE)
+          
+          print(paste0(p, " Continuous processing complete!"))
         }
-  
-        # Set indicator name for each parameter (WC, WQ, NUT)
-        i <- unique(data$IndicatorName)
-        i_id <- unique(data$IndicatorID)
-        
-        # Record data totals by parameter
-        p_count <- data %>%
-          dplyr::group_by(ProgramID, ParameterName) %>%
-          dplyr::summarise(n_tot = n(), .groups = "keep")
-        p_count$typeName <- type_name
-        
-        program_counts <- bind_rows(program_counts, p_count)
-        
-        # Append file_short to include all file names for WQ
-        file_short_list[[type_name]][[i]][[p]] <- file_short
-        
-        dat_par <- data[ParameterName==p,
-                        .(ParameterID = param_id,
-                          ParameterName = param_name,
-                          ParameterUnits = param_units,
-                          IndicatorID = i_id,
-                          IndicatorName = i,
-                          Habitat = h,
-                          ThresholdID = threshold_id,
-                          q_low = quantile(ResultValue, probs = quant_low),
-                          q_high = quantile(ResultValue, probs = quant_high),
-                          mean = mean(ResultValue),
-                          n_tot = length(ResultValue))]
-        
-        # pull high and low quantiles for filtering
-        quant_low_value <- dat_par$q_low
-        quant_high_value <- dat_par$q_high
-        
-        # grab subset of data that falls below quantile limit
-        subset_low <- data[ParameterName==p & ResultValue < quant_low_value, ]
-        subset_low$q_subset <- "low"
-        
-        # grab subset of data that falls above quantile limit
-        subset_high <- data[ParameterName==p & ResultValue > quant_high_value, ]
-        subset_high$q_subset <- "high"
-        
-        # combine datasets for display in report
-        combined_subset <- bind_rows(subset_low, subset_high)
-        
-        # Append the flagged data to data directory
-        wq_flagged_data_list[[type_name]][[i]][[p]] <- combined_subset
-        
-        # Add n_q_low and n_q_high to dat_par table
-        dat_par$n_q_low <- nrow(subset_low)
-        dat_par$n_q_high <- nrow(subset_high)
-        
-        # Record results
-        cont_dat <- rbind(cont_dat, dat_par, fill=TRUE)
-        
-        print(paste0(p, " Continuous processing complete!"))
-        
       }
       
       water_column_summary_directory[[type_name]] <- cont_dat
@@ -660,7 +726,7 @@ for(h in habitats){
     }
   }
   
-  if(h=="Submerged Aquatic Vegetation"){
+  if(str_detect(h, "Submerged Aquatic Vegetation")){
     file <- str_subset(seacardat, "All_SAV")
     
     # shortened filename for display in report
@@ -757,7 +823,7 @@ for(h in habitats){
     }
   }
   
-  if(h=="Oyster/Oyster Reef"){
+  if(str_detect(h, "Oyster")){
     file <- str_subset(seacardat, "All_OYSTER")
     # shortened filename for display in report
     file_short <- tail(str_split(file, "/")[[1]], 1)
@@ -943,7 +1009,7 @@ for(h in habitats){
     }
   }
   
-  if(h=="Coastal Wetlands"){
+  if(str_detect(h, "Coastal Wetlands")){
     file <- str_subset(seacardat, "All_CW")
     
     # shortened filename for display in report
@@ -1043,7 +1109,7 @@ for(h in habitats){
     }
   }
   
-  if(h=="Coral/Coral Reef"){
+  if(str_detect(h, "Coral")){
     file <- str_subset(seacardat, "All_CORAL")
     # shortened filename for display in report
     file_short <- tail(str_split(file, "/")[[1]], 1)
